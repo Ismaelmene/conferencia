@@ -1003,6 +1003,7 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', async ()
     toast(`Lote confirmado — ${pend.length} animal(is) liberado(s).`);
     await loadAnimals();
     await loadLotes();
+    renderPendenteResumo();
     switchConfSubtab('confirmados');
     renderLotesHistorico();
     renderHome();
