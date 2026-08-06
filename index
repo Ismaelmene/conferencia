@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>AuditaBoi — Auditoria de Rebanho</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Archivo+Expanded:wght@700;900&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#182619;
+  --ink-soft:#2b3d2c;
+  --hide:#b9793f;
+  --hide-dark:#96622f;
+  --dust:#eee6d3;
+  --dust-deep:#e2d7bb;
+  --grass:#4f6e46;
+  --grass-deep:#3a5233;
+  --alert:#a9382f;
+  --alert-bg:#f4dcd8;
+  --ok-bg:#dde8d3;
+  --white:#fffdf8;
+  --line:#d8cba9;
+  --shadow:0 2px 0 rgba(24,38,25,0.08);
+  --radius:14px;
+  font-size:16px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;height:100%;background:var(--ink);}
+body{
+  font-family:'Inter',sans-serif;
+  color:var(--ink);
+  overflow:hidden;
+}
+#app{
+  max-width:520px;
+  margin:0 auto;
+  height:100vh;
+  height:100dvh;
+  background:var(--dust);
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.hide{display:none !important;}
+
+/* ---------- top bar ---------- */
+.topbar{
+  padding:16px 18px 10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-shrink:0;
+}
+.brand{
+  font-family:'Archivo Expanded',sans-serif;
+  font-weight:900;
+  font-size:19px;
+  letter-spacing:0.02em;
+  color:var(--ink);
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.brand .tag{
+  width:22px;height:16px;background:var(--hide);border-radius:4px 4px 4px 4px;
+  position:relative;
+  flex-shrink:0;
+}
+.brand .tag::after{content:'';position:absolute;left:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--dust);}
+.iconbtn{
+  background:none;border:none;font-family:'Inter';font-weight:600;font-size:13px;
+  color:var(--ink-soft); cursor:pointer; padding:6px 10px; border-radius:8px;
+}
+.iconbtn:active{background:var(--dust-deep);}
+
+/* ---------- generic screen ---------- */
+.screen{
+  flex:1;
+  overflow-y:auto;
+  padding:6px 20px 20px;
+  display:flex;
+  flex-direction:column;
+}
+h1.page-title{
+  font-family:'Archivo Expanded',sans-serif;
+  font-weight:900;
+  font-size:26px;
+  margin:6px 0 4px;
+  color:var(--ink);
+}
+p.page-sub{
+  font-size:14px;
+  color:var(--ink-soft);
+  margin:0 0 18px;
+  line-height:1.4;
+}
+
+/* ---------- inputs ---------- */
+.field{margin-bottom:16px;}
+.field label{
+  display:block;font-size:12.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:0.06em;color:var(--grass-deep);margin-bottom:6px;
+}
+input[type=text],input[type=number],input[type=email],input[type=password],select,textarea{
+  width:100%;
+  padding:14px 14px;
+  font-size:17px;
+  font-family:'Inter';
+  border:2px solid var(--line);
+  border-radius:10px;
+  background:var(--white);
+  color:var(--ink);
+  outline:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--hide);}
+textarea{resize:vertical;min-height:80px;}
+.err-msg{color:var(--alert);font-size:13px;font-weight:600;margin-top:6px;}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:block;width:100%;text-align:center;
+  padding:15px 18px;font-size:16px;font-weight:700;font-family:'Inter';
+  border-radius:11px;border:none;cursor:pointer;box-shadow:var(--shadow);
+}
+.btn-primary{background:var(--hide);color:var(--white);}
+.btn-primary:active{background:var(--hide-dark);}
+.btn-secondary{background:var(--white);color:var(--ink);border:2px solid var(--line);box-shadow:none;}
+.btn-ghost{background:none;color:var(--grass-deep);box-shadow:none;font-weight:600;}
+.btn-danger{background:var(--alert);color:var(--white);}
+.btn[disabled]{opacity:0.45;pointer-events:none;}
+.btn-row{display:flex;gap:10px;}
+.btn-row .btn{flex:1;}
+
+/* ---------- login ---------- */
+.login-wrap{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 24px;}
+.login-hero{text-align:center;margin-bottom:34px;}
+.login-hero .tag-big{
+  width:64px;height:46px;background:var(--hide);border-radius:12px;margin:0 auto 14px;position:relative;
+}
+.login-hero .tag-big::after{content:'';position:absolute;left:12px;top:12px;width:14px;height:14px;border-radius:50%;background:var(--dust);}
+.login-hero h1{font-family:'Archivo Expanded';font-weight:900;font-size:30px;margin:0;color:var(--white);}
+.login-hero p{color:var(--dust-deep);font-size:14px;margin:6px 0 0;}
+body.login-mode{background:var(--ink);}
+body.login-mode #app{background:var(--ink);}
+.login-hero{color:var(--white);}
+
+/* ---------- home / dashboard ---------- */
+.farm-picker{
+  background:var(--white);border:2px solid var(--line);border-radius:12px;
+  padding:12px 14px;display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:18px;cursor:pointer;
+}
+.farm-picker .name{font-weight:700;font-size:15px;}
+.farm-picker .chg{font-size:12px;color:var(--hide-dark);font-weight:700;}
+
+.cta-main{
+  background:var(--ink);color:var(--white);border-radius:var(--radius);
+  padding:22px;margin-bottom:14px;position:relative;overflow:hidden;
+}
+.cta-main .lbl{font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--dust-deep);font-weight:700;}
+.cta-main h2{font-family:'Archivo Expanded';font-size:22px;margin:6px 0 14px;font-weight:900;}
+.cta-main .btn-primary{background:var(--hide);}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+.stat-card{background:var(--white);border:2px solid var(--line);border-radius:12px;padding:14px;}
+.stat-card .num{font-family:'Archivo Expanded';font-size:26px;font-weight:900;color:var(--ink);}
+.stat-card .lbl{font-size:11.5px;color:var(--ink-soft);font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin-top:2px;}
+
+.section-title{font-family:'Archivo Expanded';font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:0.03em;color:var(--grass-deep);margin:8px 0 10px;}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13.5px;}
+.bar-row .bar-lbl{width:96px;flex-shrink:0;font-weight:600;color:var(--ink-soft);}
+.bar-track{flex:1;background:var(--dust-deep);border-radius:6px;height:14px;overflow:hidden;}
+.bar-fill{height:100%;background:var(--grass);border-radius:6px;}
+.bar-fill.hide-fill{background:var(--hide);}
+.bar-val{width:34px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}
+
+.nav-tabs{
+  display:flex;flex-shrink:0;border-top:2px solid var(--line);background:var(--white);
+}
+.nav-tabs button{
+  flex:1;background:none;border:none;padding:11px 4px 9px;font-family:'Inter';font-weight:700;font-size:11.5px;
+  color:var(--ink-soft);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+}
+.nav-tabs button .dot{width:6px;height:6px;border-radius:50%;background:transparent;}
+.nav-tabs button.active{color:var(--hide-dark);}
+.nav-tabs button.active .dot{background:var(--hide);}
+
+/* ---------- wizard ---------- */
+.wiz-progress{display:flex;gap:5px;margin:4px 0 22px;flex-wrap:wrap;}
+.wiz-tag{
+  width:15px;height:11px;border-radius:3px;background:var(--dust-deep);position:relative;flex-shrink:0;
+}
+.wiz-tag.done{background:var(--grass);}
+.wiz-tag.current{background:var(--hide);}
+.wiz-step-lbl{font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:2px;}
+
+.option-grid{display:flex;flex-direction:column;gap:10px;}
+.opt-card{
+  background:var(--white);border:2px solid var(--line);border-radius:12px;
+  padding:15px 16px;font-size:16px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.opt-card.sel{border-color:var(--hide);background:#fbf1e4;}
+.opt-card .chk{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;}
+.opt-card.sel .chk{background:var(--hide);border-color:var(--hide);}
+
+.big-num-wrap{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;}
+.big-num-wrap input{font-family:'Archivo Expanded';font-size:34px;font-weight:900;padding:14px 12px;text-align:center;}
+.suffix{font-size:15px;font-weight:700;color:var(--ink-soft);}
+
+.apart-hint{
+  margin-top:10px;padding:10px 13px;border-radius:9px;background:var(--ok-bg);
+  font-size:13.5px;font-weight:600;color:var(--grass-deep);
+}
+
+.review-card{background:var(--white);border:2px solid var(--line);border-radius:12px;padding:4px 16px;margin-bottom:16px;}
+.review-row{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:14.5px;}
+.review-row:last-child{border-bottom:none;}
+.review-row .k{color:var(--ink-soft);font-weight:600;}
+.review-row .v{font-weight:700;font-family:'IBM Plex Mono';}
+.review-row .edit{color:var(--hide-dark);font-weight:700;font-size:12.5px;margin-left:8px;cursor:pointer;}
+
+.block-banner{
+  background:var(--alert-bg);border:2px solid var(--alert);color:var(--alert);
+  border-radius:12px;padding:16px;margin-bottom:16px;font-weight:700;font-size:14.5px;line-height:1.45;
+}
+.ok-banner{
+  background:var(--ok-bg);border:2px solid var(--grass);color:var(--grass-deep);
+  border-radius:12px;padding:16px;margin-bottom:16px;font-weight:700;font-size:14.5px;text-align:center;
+}
+
+.bottom-bar{
+  flex-shrink:0;padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+  background:var(--dust);border-top:2px solid var(--line);
+}
+
+/* ---------- list ---------- */
+.search-bar{margin-bottom:14px;}
+.animal-row{
+  background:var(--white);border:2px solid var(--line);border-radius:11px;
+  padding:12px 14px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+}
+.animal-row .id-block .tagid{font-family:'IBM Plex Mono';font-weight:700;font-size:15px;}
+.animal-row .id-block .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+.animal-row .peso{font-family:'Archivo Expanded';font-weight:900;font-size:17px;color:var(--hide-dark);}
+.empty-state{text-align:center;padding:50px 20px;color:var(--ink-soft);}
+.empty-state .tag-big{margin:0 auto 16px;}
+
+.toast{
+  position:absolute;left:20px;right:20px;bottom:90px;background:var(--ink);color:var(--white);
+  padding:13px 16px;border-radius:10px;font-size:14px;font-weight:600;text-align:center;z-index:50;
+  box-shadow:0 6px 20px rgba(0,0,0,0.25);
+}
+
+.loading-overlay{
+  position:absolute;inset:0;background:rgba(238,230,211,0.85);display:flex;align-items:center;justify-content:center;
+  z-index:100;font-weight:700;color:var(--ink-soft);
+}
+</style>
+</head>
+<body class="login-mode">
+<div id="app">
+
+  <!-- ============ LOGIN ============ -->
+  <div id="screen-login" class="screen login-wrap">
+    <div class="login-hero">
+      <div class="tag-big"></div>
+      <h1>AuditaBoi</h1>
+      <p>Auditoria de rebanho, direto no curral</p>
+    </div>
+    <div class="field">
+      <label style="color:var(--dust-deep)">E-mail</label>
+      <input type="email" id="login-email" placeholder="seu@email.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label style="color:var(--dust-deep)">Senha</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="login-err" class="err-msg hide"></div>
+    <button class="btn btn-primary" id="btn-login" style="margin-top:6px;">Entrar</button>
+    <button class="btn btn-ghost" id="btn-toggle-signup" style="color:var(--dust-deep);margin-top:8px;">Criar conta nova</button>
+  </div>
+
+  <!-- ============ HOME ============ -->
+  <div id="screen-home" class="screen hide">
+    <div class="topbar">
+      <div class="brand"><span class="tag"></span>AuditaBoi</div>
+      <button class="iconbtn" id="btn-logout">Sair</button>
+    </div>
+    <div class="screen" style="padding-top:0;">
+      <div class="farm-picker" id="farm-picker">
+        <div>
+          <div style="font-size:11px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;">Fazenda</div>
+          <div class="name" id="farm-picker-name">Selecionar</div>
+        </div>
+        <div class="chg">Trocar ▾</div>
+      </div>
+
+      <div class="cta-main">
+        <div class="lbl">Auditoria rápida</div>
+        <h2>Cadastrar animal</h2>
+        <button class="btn btn-primary" id="btn-start-wizard">+ Novo animal</button>
+      </div>
+
+      <div class="grid2">
+        <div class="stat-card"><div class="num" id="stat-total">0</div><div class="lbl">Total no rebanho</div></div>
+        <div class="stat-card"><div class="num" id="stat-prenhez">0%</div><div class="lbl">Prenhez</div></div>
+      </div>
+
+      <div class="section-title">Por categoria</div>
+      <div id="cat-bars"></div>
+
+      <div class="section-title" style="margin-top:16px;">Faixa de peso (apartação)</div>
+      <div id="apart-bars"></div>
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-home active"><div class="dot"></div>Início</button>
+      <button class="tab-list"><div class="dot"></div>Rebanho</button>
+    </div>
+  </div>
+
+  <!-- ============ LIST ============ -->
+  <div id="screen-list" class="screen hide">
+    <div class="topbar">
+      <div class="brand"><span class="tag"></span>Rebanho</div>
+      <button class="iconbtn" id="btn-list-back">Início</button>
+    </div>
+    <div class="screen" style="padding-top:0;">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Buscar por ID ou Ordem...">
+      </div>
+      <div id="animal-list"></div>
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-home2"><div class="dot"></div>Início</button>
+      <button class="tab-list2 active"><div class="dot"></div>Rebanho</button>
+    </div>
+  </div>
+
+  <!-- ============ WIZARD ============ -->
+  <div id="screen-wizard" class="screen hide">
+    <div class="topbar">
+      <button class="iconbtn" id="btn-wiz-close">✕ Fechar</button>
+      <div style="font-size:12px;font-weight:700;color:var(--ink-soft);" id="wiz-farm-lbl"></div>
+    </div>
+    <div class="screen" style="padding-top:0;">
+      <div class="wiz-progress" id="wiz-progress"></div>
+      <div id="wiz-step-content"></div>
+    </div>
+    <div class="bottom-bar btn-row">
+      <button class="btn btn-secondary" id="btn-wiz-back">Voltar</button>
+      <button class="btn btn-primary" id="btn-wiz-next">Confirmar e avançar</button>
+    </div>
+  </div>
+
+  <div id="loading" class="loading-overlay hide">Carregando…</div>
+  <div id="toast" class="toast hide"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* ============================================================
+   CONFIGURAÇÃO FIREBASE
+   Troque pelos dados do SEU projeto Firebase (Auth + Firestore).
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "COLE_AQUI",
+  authDomain: "COLE_AQUI.firebaseapp.com",
+  projectId: "COLE_AQUI",
+  storageBucket: "COLE_AQUI.appspot.com",
+  messagingSenderId: "COLE_AQUI",
+  appId: "COLE_AQUI"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/* ============================================================
+   ESTADO
+   ============================================================ */
+let currentUser = null;
+let farms = [];
+let currentFarm = null; // {id, nome}
+let animals = []; // cache dos animais da fazenda atual
+let signupMode = false;
+
+const CATEGORIAS = ["Bezerro","Bezerra","Garrote","Novilha","Vaca","Touro"];
+const SEXO_POR_CATEGORIA = {
+  "Bezerro":"Macho","Garrote":"Macho","Touro":"Macho",
+  "Bezerra":"Fêmea","Novilha":"Fêmea","Vaca":"Fêmea"
+};
+const RACAS = ["Nelore","Cruzado","Outra"];
+const DG_OPCOES = ["Prenhe IATF","Prenhe Touro","Vazia","Não se aplica"];
+const APART_FAIXAS = [
+  {lbl:"< 360", min:-Infinity, max:359},
+  {lbl:"361–390", min:361, max:390},
+  {lbl:"391–420", min:391, max:420},
+  {lbl:"421–500", min:421, max:500},
+  {lbl:"> 501", min:501, max:Infinity}
+];
+function faixaApartacao(peso){
+  const f = APART_FAIXAS.find(f => peso>=f.min && peso<=f.max);
+  return f ? f.lbl : "—";
+}
+
+/* Definição dos passos do wizard */
+function buildSteps(){
+  return [
+    {key:"ordem", label:"Ordem", render: renderStepOrdem},
+    {key:"id", label:"ID", render: renderStepId},
+    {key:"peso", label:"Peso", render: renderStepPeso},
+    {key:"raca", label:"Raça", render: renderStepRaca},
+    {key:"categoria", label:"Categoria", render: renderStepCategoria},
+    {key:"dg", label:"DG", render: renderStepDG, skip: s => s.data.sexo === "Macho"},
+    {key:"mes", label:"Mês", render: renderStepMes},
+    {key:"obs", label:"Obs", render: renderStepObs},
+    {key:"revisar", label:"Revisar", render: renderStepRevisar}
+  ];
+}
+
+let wiz = null; // {steps, idx, data, editingId}
+
+function newWizard(){
+  const now = new Date();
+  const mesAtual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  wiz = {
+    steps: buildSteps(),
+    idx: 0,
+    data: { ordem:"", idAntigo:"", id:"", peso:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", mes:mesAtual, obs:"" },
+    editingId: null,
+    blockReason: null
+  };
+}
+
+/* ============================================================
+   HELPERS DE UI
+   ============================================================ */
+function show(id){ document.getElementById(id).classList.remove('hide'); }
+function hide(id){ document.getElementById(id).classList.add('hide'); }
+function setLoading(v){ v ? show('loading') : hide('loading'); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.remove('hide');
+  setTimeout(()=>t.classList.add('hide'), 2200);
+}
+function goScreen(name){
+  ['login','home','list','wizard'].forEach(s=>hide('screen-'+s));
+  show('screen-'+name);
+  document.body.classList.toggle('login-mode', name==='login');
+}
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+document.getElementById('btn-login').addEventListener('click', async ()=>{
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-err');
+  errEl.classList.add('hide');
+  if(!email || !pass){ errEl.textContent="Preencha e-mail e senha."; errEl.classList.remove('hide'); return; }
+  setLoading(true);
+  try{
+    if(signupMode){
+      await auth.createUserWithEmailAndPassword(email, pass);
+    } else {
+      await auth.signInWithEmailAndPassword(email, pass);
+    }
+  }catch(e){
+    errEl.textContent = traduzErro(e.code);
+    errEl.classList.remove('hide');
+  }
+  setLoading(false);
+});
+document.getElementById('btn-toggle-signup').addEventListener('click', ()=>{
+  signupMode = !signupMode;
+  document.getElementById('btn-login').textContent = signupMode ? "Criar conta" : "Entrar";
+  document.getElementById('btn-toggle-signup').textContent = signupMode ? "Já tenho conta" : "Criar conta nova";
+});
+document.getElementById('btn-logout').addEventListener('click', ()=> auth.signOut());
+
+function traduzErro(code){
+  const map = {
+    'auth/invalid-email':'E-mail inválido.',
+    'auth/user-not-found':'Usuário não encontrado.',
+    'auth/wrong-password':'Senha incorreta.',
+    'auth/invalid-credential':'E-mail ou senha incorretos.',
+    'auth/email-already-in-use':'Este e-mail já tem conta.',
+    'auth/weak-password':'Senha muito curta (mín. 6 caracteres).'
+  };
+  return map[code] || 'Erro ao entrar. Tente novamente.';
+}
+
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    currentUser = user;
+    await loadFarms();
+    goScreen('home');
+    renderHome();
+  } else {
+    currentUser = null;
+    goScreen('login');
+  }
+});
+
+/* ============================================================
+   FAZENDAS
+   ============================================================ */
+async function loadFarms(){
+  setLoading(true);
+  try{
+    const snap = await db.collection('fazendas').where('uid','==',currentUser.uid).get();
+    farms = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(farms.length === 0){
+      const savedName = null;
+      // sem fazenda cadastrada ainda
+      currentFarm = null;
+    } else if(!currentFarm){
+      currentFarm = farms[0];
+    }
+    document.getElementById('farm-picker-name').textContent = currentFarm ? currentFarm.nome : "Cadastrar fazenda";
+    if(currentFarm) await loadAnimals();
+  } finally { setLoading(false); }
+}
+
+document.getElementById('farm-picker').addEventListener('click', async ()=>{
+  const opts = farms.map((f,i)=>`${i+1}. ${f.nome}`).join('\n');
+  const escolha = prompt(`Fazendas cadastradas:\n${opts || '(nenhuma)'}\n\nDigite o número para selecionar, ou digite um NOME NOVO para cadastrar outra fazenda:`);
+  if(!escolha) return;
+  const n = parseInt(escolha);
+  if(!isNaN(n) && farms[n-1]){
+    currentFarm = farms[n-1];
+  } else {
+    setLoading(true);
+    const ref = await db.collection('fazendas').add({ uid: currentUser.uid, nome: escolha.trim(), createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    currentFarm = { id: ref.id, nome: escolha.trim() };
+    farms.push(currentFarm);
+    setLoading(false);
+  }
+  document.getElementById('farm-picker-name').textContent = currentFarm.nome;
+  await loadAnimals();
+  renderHome();
+});
+
+/* ============================================================
+   ANIMAIS - carregar e indicadores
+   ============================================================ */
+async function loadAnimals(){
+  if(!currentFarm) { animals = []; return; }
+  setLoading(true);
+  try{
+    const snap = await db.collection('animais').where('fazendaId','==',currentFarm.id).get();
+    animals = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  } finally { setLoading(false); }
+}
+
+function renderHome(){
+  document.getElementById('farm-picker-name').textContent = currentFarm ? currentFarm.nome : "Cadastrar fazenda";
+  document.getElementById('stat-total').textContent = animals.length;
+
+  const femeas = animals.filter(a=>a.sexo==="Fêmea" && a.dg && a.dg!=="Não se aplica");
+  const prenhes = femeas.filter(a=> a.dg==="Prenhe IATF" || a.dg==="Prenhe Touro");
+  const pctPrenhez = femeas.length ? Math.round(100*prenhes.length/femeas.length) : 0;
+  document.getElementById('stat-prenhez').textContent = pctPrenhez + "%";
+
+  const catBars = document.getElementById('cat-bars');
+  catBars.innerHTML = "";
+  const maxCat = Math.max(1, ...CATEGORIAS.map(c=>animals.filter(a=>a.categoria===c).length));
+  CATEGORIAS.forEach(c=>{
+    const n = animals.filter(a=>a.categoria===c).length;
+    catBars.innerHTML += barRow(c, n, maxCat, false);
+  });
+
+  const apartBars = document.getElementById('apart-bars');
+  apartBars.innerHTML = "";
+  const maxAp = Math.max(1, ...APART_FAIXAS.map(f=>animals.filter(a=>faixaApartacao(a.peso)===f.lbl).length));
+  APART_FAIXAS.forEach(f=>{
+    const n = animals.filter(a=>faixaApartacao(a.peso)===f.lbl).length;
+    apartBars.innerHTML += barRow(f.lbl, n, maxAp, true);
+  });
+}
+function barRow(lbl, val, max, hideStyle){
+  const pct = Math.round(100*val/max);
+  return `<div class="bar-row">
+    <div class="bar-lbl">${lbl}</div>
+    <div class="bar-track"><div class="bar-fill ${hideStyle?'hide-fill':''}" style="width:${pct}%"></div></div>
+    <div class="bar-val">${val}</div>
+  </div>`;
+}
+
+/* Navegação inferior */
+document.querySelectorAll('.tab-list,.tab-list2').forEach(b=>b.addEventListener('click', ()=>{ goScreen('list'); renderList(); }));
+document.querySelectorAll('.tab-home,.tab-home2').forEach(b=>b.addEventListener('click', ()=>{ goScreen('home'); renderHome(); }));
+document.getElementById('btn-list-back').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
+
+/* ============================================================
+   LISTA / BUSCA
+   ============================================================ */
+document.getElementById('search-input').addEventListener('input', renderList);
+function renderList(){
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const listEl = document.getElementById('animal-list');
+  let filtered = animals;
+  if(q){
+    filtered = animals.filter(a =>
+      String(a.id||"").toLowerCase().includes(q) ||
+      String(a.ordem||"").toLowerCase().includes(q) ||
+      String(a.idAntigo||"").toLowerCase().includes(q)
+    );
+  }
+  filtered = filtered.slice().sort((a,b)=> (a.ordem||0)-(b.ordem||0));
+  if(filtered.length===0){
+    listEl.innerHTML = `<div class="empty-state"><div class="tag-big" style="background:var(--line);"></div>Nenhum animal encontrado.</div>`;
+    return;
+  }
+  listEl.innerHTML = filtered.map(a => `
+    <div class="animal-row" data-id="${a.id}">
+      <div class="id-block">
+        <div class="tagid">#${a.ordem} · ID ${a.id}</div>
+        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"} ${a.dg && a.dg!=="Não se aplica" ? "· "+a.dg : ""}</div>
+      </div>
+      <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
+    </div>`).join("");
+  document.querySelectorAll('.animal-row').forEach(row=>{
+    row.addEventListener('click', ()=> openAnimalForEdit(row.dataset.id));
+  });
+}
+
+function openAnimalForEdit(docId){
+  const a = animals.find(x=>x.id===docId);
+  if(!a) return;
+  newWizard();
+  wiz.editingId = docId;
+  wiz.data = {
+    ordem:a.ordem, idAntigo:a.idAntigo||"", id:a.id, peso:a.peso, raca:a.raca,
+    categoria:a.categoria, sexo:a.sexo, dg:a.dg||"", idadeGestacional:a.idadeGestacional||"",
+    mes:a.mes, obs:a.obs||""
+  };
+  wiz.idx = wiz.steps.length - 1; // vai direto pra revisão
+  goScreen('wizard');
+  renderWizard();
+}
+
+/* ============================================================
+   WIZARD
+   ============================================================ */
+document.getElementById('btn-start-wizard').addEventListener('click', ()=>{
+  if(!currentFarm){ toast("Cadastre uma fazenda primeiro."); return; }
+  newWizard();
+  const nextOrdem = animals.length ? Math.max(...animals.map(a=>Number(a.ordem)||0)) + 1 : 1;
+  wiz.data.ordem = nextOrdem;
+  goScreen('wizard');
+  renderWizard();
+});
+document.getElementById('btn-wiz-close').addEventListener('click', ()=>{
+  if(confirm("Sair do cadastro? Os dados não salvos serão perdidos.")){
+    goScreen('home'); renderHome();
+  }
+});
+
+function activeSteps(){
+  return wiz.steps.filter(s => !(s.skip && s.skip(wiz)));
+}
+
+function renderWizard(){
+  const steps = activeSteps();
+  if(wiz.idx >= steps.length) wiz.idx = steps.length-1;
+  const step = steps[wiz.idx];
+
+  // progress tags
+  const prog = document.getElementById('wiz-progress');
+  prog.innerHTML = steps.map((s,i)=>{
+    let cls = "wiz-tag";
+    if(i < wiz.idx) cls += " done";
+    if(i === wiz.idx) cls += " current";
+    return `<div class="${cls}" title="${s.label}"></div>`;
+  }).join("");
+
+  document.getElementById('wiz-farm-lbl').textContent = currentFarm ? currentFarm.nome : "";
+
+  const content = document.getElementById('wiz-step-content');
+  content.innerHTML = "";
+  content.appendChild(step.render());
+
+  document.getElementById('btn-wiz-back').style.visibility = wiz.idx===0 ? 'hidden' : 'visible';
+  document.getElementById('btn-wiz-next').textContent = (step.key==='revisar')
+    ? (wiz.editingId ? 'Salvar alterações' : 'Confirmar cadastro')
+    : 'Confirmar e avançar';
+}
+
+document.getElementById('btn-wiz-back').addEventListener('click', ()=>{
+  if(wiz.idx>0){ wiz.idx--; renderWizard(); }
+});
+document.getElementById('btn-wiz-next').addEventListener('click', async ()=>{
+  const steps = activeSteps();
+  const step = steps[wiz.idx];
+  const errEl = () => document.getElementById('step-err');
+
+  if(step.key !== 'revisar'){
+    const err = validateStep(step.key);
+    if(err){ if(errEl()) errEl().textContent = err; return; }
+    wiz.idx++;
+    renderWizard();
+    return;
+  }
+
+  // etapa final: salvar
+  await salvarAnimal();
+});
+
+function validateStep(key){
+  const d = wiz.data;
+  switch(key){
+    case 'ordem': return (d.ordem===""||d.ordem===null||isNaN(d.ordem)) ? "Informe o número de ordem." : null;
+    case 'id': return !d.id.trim() ? "Informe o ID do animal." : null;
+    case 'peso': return (!d.peso || isNaN(d.peso) || Number(d.peso)<=0) ? "Informe um peso válido." : null;
+    case 'raca': return !d.raca ? "Selecione a raça." : null;
+    case 'categoria': return !d.categoria ? "Selecione a categoria." : null;
+    case 'dg': return !d.dg ? "Selecione o diagnóstico." : null;
+    case 'mes': return !d.mes ? "Informe o mês de referência." : null;
+    default: return null;
+  }
+}
+
+/* ---- STEP RENDERERS ---- */
+function stepWrap(title, sub, innerHtml){
+  const div = document.createElement('div');
+  div.innerHTML = `<h1 class="page-title">${title}</h1>${sub?`<p class="page-sub">${sub}</p>`:''}${innerHtml}<div id="step-err" class="err-msg"></div>`;
+  return div;
+}
+
+function renderStepOrdem(){
+  const el = stepWrap("Ordem", "Número sequencial da passagem no tronco/curral.",
+    `<div class="big-num-wrap"><input type="number" id="in-ordem" value="${wiz.data.ordem}" inputmode="numeric"></div>
+     <div class="field" style="margin-top:14px;">
+       <label>ID antigo (opcional)</label>
+       <input type="text" id="in-idantigo" value="${wiz.data.idAntigo}" placeholder="Se o animal já teve outra identificação">
+     </div>`);
+  setTimeout(()=>{
+    document.getElementById('in-ordem').addEventListener('input', e=> wiz.data.ordem = e.target.value ? Number(e.target.value) : "");
+    document.getElementById('in-idantigo').addEventListener('input', e=> wiz.data.idAntigo = e.target.value);
+  });
+  return el;
+}
+
+function renderStepId(){
+  const el = stepWrap("ID do animal", "Número do brinco ou identificação usada na fazenda.",
+    `<div class="field"><input type="text" id="in-id" value="${wiz.data.id}" placeholder="Ex: 1024" autofocus></div>`);
+  setTimeout(()=> document.getElementById('in-id').addEventListener('input', e=> wiz.data.id = e.target.value));
+  return el;
+}
+
+function renderStepPeso(){
+  const el = stepWrap("Peso", "Peso atual do animal na balança.",
+    `<div class="big-num-wrap">
+       <input type="number" id="in-peso" value="${wiz.data.peso}" inputmode="decimal">
+       <span class="suffix">kg</span>
+     </div>
+     <div class="apart-hint" id="apart-hint">Faixa de apartação: —</div>`);
+  const upd = ()=>{
+    const p = Number(document.getElementById('in-peso').value);
+    document.getElementById('apart-hint').textContent = "Faixa de apartação: " + (p ? faixaApartacao(p) + " kg" : "—");
+  };
+  setTimeout(()=>{
+    document.getElementById('in-peso').addEventListener('input', e=>{ wiz.data.peso = e.target.value ? Number(e.target.value) : ""; upd(); });
+    upd();
+  });
+  return el;
+}
+
+function renderStepRaca(){
+  const el = stepWrap("Raça", "",
+    `<div class="option-grid" id="opt-raca">
+      ${RACAS.map(r=>`<div class="opt-card ${wiz.data.raca===r?'sel':''}" data-v="${r}"><span>${r}</span><span class="chk"></span></div>`).join("")}
+    </div>`);
+  setTimeout(()=>{
+    document.querySelectorAll('#opt-raca .opt-card').forEach(card=>{
+      card.addEventListener('click', ()=>{
+        wiz.data.raca = card.dataset.v;
+        document.querySelectorAll('#opt-raca .opt-card').forEach(c=>c.classList.remove('sel'));
+        card.classList.add('sel');
+      });
+    });
+  });
+  return el;
+}
+
+function renderStepCategoria(){
+  const el = stepWrap("Categoria", "Define automaticamente o sexo do animal.",
+    `<div class="option-grid" id="opt-cat">
+      ${CATEGORIAS.map(c=>`<div class="opt-card ${wiz.data.categoria===c?'sel':''}" data-v="${c}"><span>${c}</span><span class="chk"></span></div>`).join("")}
+    </div>`);
+  setTimeout(()=>{
+    document.querySelectorAll('#opt-cat .opt-card').forEach(card=>{
+      card.addEventListener('click', ()=>{
+        wiz.data.categoria = card.dataset.v;
+        wiz.data.sexo = SEXO_POR_CATEGORIA[card.dataset.v];
+        if(wiz.data.sexo === "Macho") wiz.data.dg = "Não se aplica";
+        else if(wiz.data.dg === "Não se aplica") wiz.data.dg = "";
+        document.querySelectorAll('#opt-cat .opt-card').forEach(c=>c.classList.remove('sel'));
+        card.classList.add('sel');
+      });
+    });
+  });
+  return el;
+}
+
+function renderStepDG(){
+  const opts = DG_OPCOES.filter(o=>o!=="Não se aplica");
+  const el = stepWrap("Diagnóstico gestacional", "",
+    `<div class="option-grid" id="opt-dg">
+      ${opts.map(o=>`<div class="opt-card ${wiz.data.dg===o?'sel':''}" data-v="${o}"><span>${o}</span><span class="chk"></span></div>`).join("")}
+    </div>
+    <div class="field hide" id="idade-gest-field" style="margin-top:16px;">
+      <label>Idade gestacional (meses)</label>
+      <input type="number" id="in-idadegest" value="${wiz.data.idadeGestacional}" inputmode="numeric">
+    </div>`);
+  const toggleIdade = ()=>{
+    const f = document.getElementById('idade-gest-field');
+    if(wiz.data.dg==="Prenhe IATF" || wiz.data.dg==="Prenhe Touro") f.classList.remove('hide');
+    else f.classList.add('hide');
+  };
+  setTimeout(()=>{
+    document.querySelectorAll('#opt-dg .opt-card').forEach(card=>{
+      card.addEventListener('click', ()=>{
+        wiz.data.dg = card.dataset.v;
+        document.querySelectorAll('#opt-dg .opt-card').forEach(c=>c.classList.remove('sel'));
+        card.classList.add('sel');
+        toggleIdade();
+      });
+    });
+    document.getElementById('in-idadegest').addEventListener('input', e=> wiz.data.idadeGestacional = e.target.value);
+    toggleIdade();
+  });
+  return el;
+}
+
+function renderStepMes(){
+  const el = stepWrap("Mês de referência", "",
+    `<div class="field"><input type="month" id="in-mes" value="${wiz.data.mes}"></div>`);
+  setTimeout(()=> document.getElementById('in-mes').addEventListener('input', e=> wiz.data.mes = e.target.value));
+  return el;
+}
+
+function renderStepObs(){
+  const el = stepWrap("Observações", "Opcional.",
+    `<div class="field"><textarea id="in-obs" placeholder="Alguma observação sobre o animal...">${wiz.data.obs}</textarea></div>`);
+  setTimeout(()=> document.getElementById('in-obs').addEventListener('input', e=> wiz.data.obs = e.target.value));
+  return el;
+}
+
+function renderStepRevisar(){
+  const d = wiz.data;
+  const rows = [
+    ["Ordem", d.ordem], ["ID antigo", d.idAntigo||"—"], ["ID", d.id],
+    ["Peso", d.peso+" kg ("+faixaApartacao(Number(d.peso))+")"],
+    ["Raça", d.raca], ["Categoria", d.categoria], ["Sexo", d.sexo],
+    ["DG", d.dg], 
+  ];
+  if(d.dg==="Prenhe IATF"||d.dg==="Prenhe Touro") rows.push(["Idade gestacional", (d.idadeGestacional||"—")+" meses"]);
+  rows.push(["Mês", d.mes], ["Obs", d.obs||"—"]);
+
+  const el = document.createElement('div');
+  el.innerHTML = `<h1 class="page-title">Revisar</h1><p class="page-sub">Confira os dados antes de salvar.</p>
+    <div id="dup-banner"></div>
+    <div class="review-card">
+      ${rows.map(([k,v])=>`<div class="review-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}
+    </div>
+    <div id="step-err" class="err-msg"></div>`;
+  checkDuplicate().then(dup=>{
+    const banner = el.querySelector('#dup-banner');
+    if(dup && dup.id !== wiz.editingId){
+      wiz.blockReason = `Já existe um animal com Ordem ${d.ordem} + ID ${d.id} cadastrado nesta fazenda.`;
+      banner.innerHTML = `<div class="block-banner">⚠ Cadastro bloqueado — ${wiz.blockReason}</div>`;
+      document.getElementById('btn-wiz-next').setAttribute('disabled','disabled');
+    } else {
+      wiz.blockReason = null;
+      banner.innerHTML = `<div class="ok-banner">✓ Nenhuma duplicidade encontrada</div>`;
+      document.getElementById('btn-wiz-next').removeAttribute('disabled');
+    }
+  });
+  return el;
+}
+
+async function checkDuplicate(){
+  if(!currentFarm) return null;
+  const d = wiz.data;
+  const snap = await db.collection('animais')
+    .where('fazendaId','==',currentFarm.id)
+    .where('ordem','==', Number(d.ordem))
+    .where('id','==', String(d.id))
+    .limit(1).get();
+  if(snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+async function salvarAnimal(){
+  if(wiz.blockReason){ toast("Corrija a duplicidade antes de salvar."); return; }
+  const d = wiz.data;
+  const payload = {
+    fazendaId: currentFarm.id,
+    ordem: Number(d.ordem),
+    idAntigo: d.idAntigo || "",
+    id: String(d.id),
+    peso: Number(d.peso),
+    raca: d.raca,
+    categoria: d.categoria,
+    sexo: d.sexo,
+    dg: d.dg || "Não se aplica",
+    idadeGestacional: d.idadeGestacional || "",
+    mes: d.mes,
+    obs: d.obs || "",
+    apartacao: faixaApartacao(Number(d.peso)),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: currentUser.uid
+  };
+  setLoading(true);
+  try{
+    if(wiz.editingId){
+      await db.collection('animais').doc(wiz.editingId).update(payload);
+      toast("Animal atualizado.");
+    } else {
+      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection('animais').add(payload);
+      toast("Animal cadastrado! Pronto para o próximo.");
+    }
+    await loadAnimals();
+    if(wiz.editingId){
+      goScreen('list'); renderList();
+    } else {
+      // segue no fluxo: prepara próximo cadastro com ordem+1
+      const nextOrdem = Math.max(...animals.map(a=>Number(a.ordem)||0), Number(d.ordem)) + 1;
+      newWizard();
+      wiz.data.ordem = nextOrdem;
+      renderWizard();
+    }
+    renderHome();
+  }catch(e){
+    console.error(e);
+    toast("Erro ao salvar. Tente novamente.");
+  } finally { setLoading(false); }
+}
+</script>
+</body>
+</html>
