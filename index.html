@@ -275,6 +275,13 @@ body.login-mode #app{background:var(--ink);}
 }
 .sub-tab.active{ border-color:var(--hide); color:var(--hide-dark); background:#fbf1e4; }
 
+/* ---------- checklist de pendentes (conferência) ---------- */
+.pend-group{ background:var(--white); border:2px solid var(--line); border-radius:11px; padding:11px 14px 4px; margin-bottom:10px; }
+.pend-group-head{ display:flex; align-items:center; gap:10px; font-size:14.5px; font-weight:700; padding-bottom:8px; margin-bottom:6px; border-bottom:1px solid var(--line); cursor:pointer; }
+.pend-group-head .count{ color:var(--ink-soft); font-weight:600; font-size:12px; margin-left:auto; }
+.pend-item{ display:flex; align-items:center; gap:10px; padding:7px 0 7px 2px; font-size:13.5px; font-family:'IBM Plex Mono'; cursor:pointer; }
+.pend-group input[type=checkbox], .pend-item input[type=checkbox]{ width:19px; height:19px; accent-color:var(--hide); flex-shrink:0; }
+
 /* ---------- modal ---------- */
 .modal-overlay{
   position:absolute;inset:0;background:rgba(24,38,25,0.55);display:flex;align-items:flex-end;justify-content:center;z-index:80;
@@ -431,9 +438,19 @@ body.login-mode #app{background:var(--ink);}
       </div>
 
       <div id="conf-pendente-view">
-        <p class="page-sub" style="margin-top:-6px;">Confira quantos animais vão pra cada pasto antes de soltar o gado do curral de separação. Pode confirmar várias vezes ao dia.</p>
+        <p class="page-sub" style="margin-top:-6px;">Confira quantos animais tem pendente no total, e escolha exatamente quais vão nesse lote (o curral de separação pode encher parcial — o resto fica pendente pra próxima conferência).</p>
+
+        <div class="section-title">Resumo geral (todos pendentes)</div>
         <div id="conf-pasto-summary"></div>
-        <div class="stat-card" style="margin:16px 0;"><div class="num" id="conf-total-pend">0</div><div class="lbl">Total pendente de liberação</div></div>
+
+        <div class="section-title" style="margin-top:18px;">Selecione os animais deste lote</div>
+        <div class="btn-row" style="margin-bottom:12px;">
+          <button class="btn btn-secondary" id="btn-select-all-pend">Selecionar todos</button>
+          <button class="btn btn-secondary" id="btn-clear-select-pend">Limpar seleção</button>
+        </div>
+        <div id="conf-pending-checklist"></div>
+
+        <div class="stat-card" style="margin:16px 0;"><div class="num" id="conf-total-pend">0</div><div class="lbl">Selecionados pra este lote</div></div>
         <div class="field">
           <label>Conferente 1</label>
           <input type="text" id="in-conf1" placeholder="Nome">
@@ -894,8 +911,10 @@ function pendentesPorPasto(){
   return { pend, groups };
 }
 
+let selectedPendIds = new Set();
+
 function renderPendenteResumo(){
-  const { pend, groups } = pendentesPorPasto();
+  const { groups } = pendentesPorPasto();
   const wrap = document.getElementById('conf-pasto-summary');
   const entries = Object.entries(groups);
   if(entries.length === 0){
@@ -905,9 +924,66 @@ function renderPendenteResumo(){
       `<div class="review-row"><span class="k">${p}</span><span class="v">${n} ${n>1?'animais':'animal'}</span></div>`
     ).join("")}</div>`;
   }
-  document.getElementById('conf-total-pend').textContent = pend.length;
-  document.getElementById('btn-confirmar-lote').disabled = pend.length === 0;
 }
+
+function renderPendenteChecklist(){
+  const pend = animals.filter(a=>!a.confirmado);
+  const wrap = document.getElementById('conf-pending-checklist');
+  if(!pend.length){
+    wrap.innerHTML = "";
+    updateConfSelectionSummary();
+    return;
+  }
+  const groups = {};
+  pend.forEach(a=>{
+    const p = a.pasto || "Sem pasto definido";
+    (groups[p] = groups[p] || []).push(a);
+  });
+  wrap.innerHTML = Object.entries(groups).map(([pasto, list])=>{
+    const allChecked = list.every(a => selectedPendIds.has(a.docId));
+    return `<div class="pend-group">
+      <label class="pend-group-head">
+        <input type="checkbox" class="grp-check" data-pasto="${pasto}" ${allChecked?'checked':''}>
+        ${pasto}<span class="count">${list.length} ${list.length>1?'animais':'animal'}</span>
+      </label>
+      ${list.map(a=>`
+        <label class="pend-item">
+          <input type="checkbox" class="item-check" data-id="${a.docId}" ${selectedPendIds.has(a.docId)?'checked':''}>
+          <span>#${a.ordem} · ID ${a.id} · ${a.peso}kg</span>
+        </label>`).join("")}
+    </div>`;
+  }).join("");
+
+  wrap.querySelectorAll('.item-check').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(cb.checked) selectedPendIds.add(cb.dataset.id); else selectedPendIds.delete(cb.dataset.id);
+      renderPendenteChecklist();
+    });
+  });
+  wrap.querySelectorAll('.grp-check').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      groups[cb.dataset.pasto].forEach(a=>{
+        if(cb.checked) selectedPendIds.add(a.docId); else selectedPendIds.delete(a.docId);
+      });
+      renderPendenteChecklist();
+    });
+  });
+  updateConfSelectionSummary();
+}
+
+function updateConfSelectionSummary(){
+  document.getElementById('conf-total-pend').textContent = selectedPendIds.size;
+  document.getElementById('btn-confirmar-lote').disabled = selectedPendIds.size === 0;
+}
+
+document.getElementById('btn-select-all-pend').addEventListener('click', ()=>{
+  animals.filter(a=>!a.confirmado).forEach(a=> selectedPendIds.add(a.docId));
+  renderPendenteChecklist();
+});
+document.getElementById('btn-clear-select-pend').addEventListener('click', ()=>{
+  selectedPendIds.clear();
+  renderPendenteChecklist();
+});
 
 function renderLotesHistorico(){
   const wrap = document.getElementById('lotes-list');
@@ -960,7 +1036,9 @@ async function renderConferencia(){
   if(!currentFarm){ toast("Selecione uma fazenda primeiro."); goScreen('home'); return; }
   await loadLotes();
   switchConfSubtab('pendente');
+  selectedPendIds.clear();
   renderPendenteResumo();
+  renderPendenteChecklist();
   if(lotes.length){
     document.getElementById('in-conf1').value = lotes[0].pessoa1 || "";
     document.getElementById('in-conf2').value = lotes[0].pessoa2 || "";
@@ -968,12 +1046,14 @@ async function renderConferencia(){
 }
 
 document.getElementById('btn-confirmar-lote').addEventListener('click', async ()=>{
-  const { pend, groups } = pendentesPorPasto();
-  if(pend.length === 0){ toast("Nenhum animal pendente."); return; }
+  const pend = animals.filter(a=> selectedPendIds.has(a.docId));
+  const groups = {};
+  pend.forEach(a=>{ const p = a.pasto || "Sem pasto definido"; groups[p] = (groups[p]||0)+1; });
+  if(pend.length === 0){ toast("Selecione pelo menos um animal pra esse lote."); return; }
   const p1 = document.getElementById('in-conf1').value.trim();
   const p2 = document.getElementById('in-conf2').value.trim();
   if(!p1 || !p2){ toast("Informe os dois conferentes."); return; }
-  if(!confirm(`Confirmar liberação de ${pend.length} animal(is)? Isso solta o gado do curral de separação.`)) return;
+  if(!confirm(`Confirmar liberação de ${pend.length} animal(is) selecionado(s)? Isso solta esse lote do curral de separação.`)) return;
 
   setLoading(true);
   try{
@@ -1001,9 +1081,11 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', async ()
     });
     await batch.commit();
     toast(`Lote confirmado — ${pend.length} animal(is) liberado(s).`);
+    selectedPendIds.clear();
     await loadAnimals();
     await loadLotes();
     renderPendenteResumo();
+    renderPendenteChecklist();
     switchConfSubtab('confirmados');
     renderLotesHistorico();
     renderHome();
