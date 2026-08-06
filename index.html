@@ -426,7 +426,8 @@ body.login-mode #app{background:var(--ink);}
     <div class="screen" style="padding-top:0;">
       <div class="btn-row" style="margin-bottom:18px;">
         <button class="btn btn-secondary sub-tab active" id="subtab-pendente">Pendentes</button>
-        <button class="btn btn-secondary sub-tab" id="subtab-confirmados">Lotes confirmados</button>
+        <button class="btn btn-secondary sub-tab" id="subtab-conferidos">Conferidos</button>
+        <button class="btn btn-secondary sub-tab" id="subtab-confirmados">Lotes</button>
       </div>
 
       <div id="conf-pendente-view">
@@ -442,6 +443,11 @@ body.login-mode #app{background:var(--ink);}
           <input type="text" id="in-conf2" placeholder="Nome">
         </div>
         <button class="btn btn-primary" id="btn-confirmar-lote">✅ Confirmar e soltar</button>
+      </div>
+
+      <div id="conf-conferidos-view" class="hide">
+        <p class="page-sub" style="margin-top:-6px;">Animais já liberados — não aparecem mais em Pendentes.</p>
+        <div id="conf-conferidos-list"></div>
       </div>
 
       <div id="conf-historico-view" class="hide">
@@ -788,7 +794,7 @@ async function loadAnimals(){
   setLoading(true);
   try{
     const snap = await db.collection('animais').where('fazendaId','==',currentFarm.id).get();
-    animals = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    animals = snap.docs.map(d=>({...d.data(), docId:d.id}));
   } finally { setLoading(false); }
 }
 
@@ -921,13 +927,33 @@ function renderLotesHistorico(){
   }).join("");
 }
 
+function renderConferidosView(){
+  const wrap = document.getElementById('conf-conferidos-list');
+  const list = animals.filter(a=>a.confirmado).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+  if(!list.length){
+    wrap.innerHTML = `<div class="empty-state">Nenhum animal conferido ainda.</div>`;
+    return;
+  }
+  wrap.innerHTML = list.map(a=>`
+    <div class="animal-row" style="cursor:default;">
+      <div class="id-block">
+        <div class="tagid">#${a.ordem} · ID ${a.id}</div>
+        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} · ${formatDataBR(a.dataTrabalho)}</div>
+      </div>
+      <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
+    </div>`).join("");
+}
+
 function switchConfSubtab(which){
   document.getElementById('conf-pendente-view').classList.toggle('hide', which!=='pendente');
+  document.getElementById('conf-conferidos-view').classList.toggle('hide', which!=='conferidos');
   document.getElementById('conf-historico-view').classList.toggle('hide', which!=='confirmados');
   document.getElementById('subtab-pendente').classList.toggle('active', which==='pendente');
+  document.getElementById('subtab-conferidos').classList.toggle('active', which==='conferidos');
   document.getElementById('subtab-confirmados').classList.toggle('active', which==='confirmados');
 }
 document.getElementById('subtab-pendente').addEventListener('click', ()=> switchConfSubtab('pendente'));
+document.getElementById('subtab-conferidos').addEventListener('click', ()=>{ switchConfSubtab('conferidos'); renderConferidosView(); });
 document.getElementById('subtab-confirmados').addEventListener('click', ()=>{ switchConfSubtab('confirmados'); renderLotesHistorico(); });
 
 async function renderConferencia(){
@@ -962,12 +988,12 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', async ()
       pessoa2: p2,
       porPasto: groups,
       totalAnimais: pend.length,
-      animalIds: pend.map(a=>a.id),
+      animalIds: pend.map(a=>a.docId),
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: currentUser.uid
     });
     pend.forEach(a=>{
-      batch.update(db.collection('animais').doc(a.id), {
+      batch.update(db.collection('animais').doc(a.docId), {
         confirmado: true,
         loteId: loteRef.id,
         confirmadoEm: firebase.firestore.FieldValue.serverTimestamp()
@@ -1117,7 +1143,7 @@ function renderList(){
     return;
   }
   listEl.innerHTML = filtered.map(a => `
-    <div class="animal-row" data-id="${a.id}">
+    <div class="animal-row" data-id="${a.docId}">
       <div class="id-block">
         <div class="tagid">#${a.ordem} · ID ${a.id}</div>
         <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} ${a.dg && a.dg!=="Não se aplica" ? "· "+a.dg : ""}${!a.confirmado ? ' · ⏳ pendente' : ''}</div>
@@ -1130,7 +1156,7 @@ function renderList(){
 }
 
 function openAnimalForEdit(docId){
-  const a = animals.find(x=>x.id===docId);
+  const a = animals.find(x=>x.docId===docId);
   if(!a) return;
   newWizard();
   wiz.editingId = docId;
