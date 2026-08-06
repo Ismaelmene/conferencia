@@ -368,12 +368,12 @@ body.login-mode #app{background:var(--ink);}
    Troque pelos dados do SEU projeto Firebase (Auth + Firestore).
    ============================================================ */
 const firebaseConfig = {
-  apiKey: "COLE_AQUI",
-  authDomain: "COLE_AQUI.firebaseapp.com",
-  projectId: "COLE_AQUI",
-  storageBucket: "COLE_AQUI.appspot.com",
-  messagingSenderId: "COLE_AQUI",
-  appId: "COLE_AQUI"
+  apiKey: "AIzaSyCFa4oDPhzGO3wehGzpMYaWp9kvCFat3ag",
+  authDomain: "conferencia-96054.firebaseapp.com",
+  projectId: "conferencia-96054",
+  storageBucket: "conferencia-96054.firebasestorage.app",
+  messagingSenderId: "511237007055",
+  appId: "1:511237007055:web:35364d6df70ce2fb8cf9ba"
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
