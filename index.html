@@ -273,6 +273,7 @@ body.login-mode #app{background:var(--ink);}
   margin-top:8px;padding:9px 13px;border-radius:9px;background:#e7ddc4;
   font-size:13px;font-weight:700;color:var(--hide-dark);
 }
+.sub-tab.active{ border-color:var(--hide); color:var(--hide-dark); background:#fbf1e4; }
 
 /* ---------- modal ---------- */
 .modal-overlay{
@@ -302,7 +303,7 @@ body.login-mode #app{background:var(--ink);}
   h1.page-title{ font-size:30px; }
 
   /* wizard & content centered, comfortable reading width */
-  #screen-wizard .screen, #screen-home .screen, #screen-list .screen, #screen-config .screen{
+  #screen-wizard .screen, #screen-home .screen, #screen-list .screen, #screen-config .screen, #screen-conferencia .screen{
     max-width:640px; margin:0 auto; width:100%;
   }
   .wiz-progress{ max-width:640px; margin-left:auto; margin-right:auto; }
@@ -368,6 +369,7 @@ body.login-mode #app{background:var(--ink);}
 
       <div class="grid2">
         <div class="stat-card"><div class="num" id="stat-total">0</div><div class="lbl">Total no rebanho</div></div>
+        <div class="stat-card"><div class="num" id="stat-pendente">0</div><div class="lbl">Aguard. liberação</div></div>
         <div class="stat-card"><div class="num" id="stat-prenhez">0%</div><div class="lbl">Prenhez</div></div>
       </div>
 
@@ -384,9 +386,10 @@ body.login-mode #app{background:var(--ink);}
       <div id="apart-bars"></div>
     </div>
     <div class="nav-tabs">
-      <button class="tab-home active"><div class="dot"></div>Início</button>
-      <button class="tab-list"><div class="dot"></div>Rebanho</button>
-      <button class="tab-config"><div class="dot"></div>⚙ Config</button>
+      <button data-target="home" class="active"><div class="dot"></div>Início</button>
+      <button data-target="list"><div class="dot"></div>Rebanho</button>
+      <button data-target="conferencia"><div class="dot"></div>✅ Conferência</button>
+      <button data-target="config"><div class="dot"></div>⚙ Config</button>
     </div>
   </div>
 
@@ -407,9 +410,49 @@ body.login-mode #app{background:var(--ink);}
       <div id="animal-list"></div>
     </div>
     <div class="nav-tabs">
-      <button class="tab-home2"><div class="dot"></div>Início</button>
-      <button class="tab-list2 active"><div class="dot"></div>Rebanho</button>
-      <button class="tab-config2"><div class="dot"></div>⚙ Config</button>
+      <button data-target="home"><div class="dot"></div>Início</button>
+      <button data-target="list" class="active"><div class="dot"></div>Rebanho</button>
+      <button data-target="conferencia"><div class="dot"></div>✅ Conferência</button>
+      <button data-target="config"><div class="dot"></div>⚙ Config</button>
+    </div>
+  </div>
+
+  <!-- ============ CONFERÊNCIA ============ -->
+  <div id="screen-conferencia" class="screen hide">
+    <div class="topbar">
+      <div class="brand"><span class="tag"></span>Conferência</div>
+      <button class="iconbtn" id="btn-conf-back">Início</button>
+    </div>
+    <div class="screen" style="padding-top:0;">
+      <div class="btn-row" style="margin-bottom:18px;">
+        <button class="btn btn-secondary sub-tab active" id="subtab-pendente">Pendentes</button>
+        <button class="btn btn-secondary sub-tab" id="subtab-confirmados">Lotes confirmados</button>
+      </div>
+
+      <div id="conf-pendente-view">
+        <p class="page-sub" style="margin-top:-6px;">Confira quantos animais vão pra cada pasto antes de soltar o gado do curral de separação. Pode confirmar várias vezes ao dia.</p>
+        <div id="conf-pasto-summary"></div>
+        <div class="stat-card" style="margin:16px 0;"><div class="num" id="conf-total-pend">0</div><div class="lbl">Total pendente de liberação</div></div>
+        <div class="field">
+          <label>Conferente 1</label>
+          <input type="text" id="in-conf1" placeholder="Nome">
+        </div>
+        <div class="field">
+          <label>Conferente 2</label>
+          <input type="text" id="in-conf2" placeholder="Nome">
+        </div>
+        <button class="btn btn-primary" id="btn-confirmar-lote">✅ Confirmar e soltar</button>
+      </div>
+
+      <div id="conf-historico-view" class="hide">
+        <div id="lotes-list"></div>
+      </div>
+    </div>
+    <div class="nav-tabs">
+      <button data-target="home"><div class="dot"></div>Início</button>
+      <button data-target="list"><div class="dot"></div>Rebanho</button>
+      <button data-target="conferencia" class="active"><div class="dot"></div>✅ Conferência</button>
+      <button data-target="config"><div class="dot"></div>⚙ Config</button>
     </div>
   </div>
 
@@ -427,9 +470,10 @@ body.login-mode #app{background:var(--ink);}
       <button class="btn btn-primary" id="btn-save-pasto">Salvar configurações</button>
     </div>
     <div class="nav-tabs">
-      <button class="tab-home3"><div class="dot"></div>Início</button>
-      <button class="tab-list3"><div class="dot"></div>Rebanho</button>
-      <button class="tab-config3 active"><div class="dot"></div>⚙ Config</button>
+      <button data-target="home"><div class="dot"></div>Início</button>
+      <button data-target="list"><div class="dot"></div>Rebanho</button>
+      <button data-target="conferencia"><div class="dot"></div>✅ Conferência</button>
+      <button data-target="config" class="active"><div class="dot"></div>⚙ Config</button>
     </div>
   </div>
 
@@ -617,7 +661,7 @@ function toast(msg){
   setTimeout(()=>t.classList.add('hide'), 2200);
 }
 function goScreen(name){
-  ['login','home','list','wizard','config'].forEach(s=>hide('screen-'+s));
+  ['login','home','list','wizard','config','conferencia'].forEach(s=>hide('screen-'+s));
   show('screen-'+name);
   document.body.classList.toggle('login-mode', name==='login');
 }
@@ -751,6 +795,7 @@ async function loadAnimals(){
 function renderHome(){
   document.getElementById('farm-picker-name').textContent = currentFarm ? currentFarm.nome : "Cadastrar fazenda";
   document.getElementById('stat-total').textContent = animals.length;
+  document.getElementById('stat-pendente').textContent = animals.filter(a=>!a.confirmado).length;
 
   const femeas = animals.filter(a=>a.sexo==="Fêmea" && a.dg && a.dg!=="Não se aplica");
   const prenhes = femeas.filter(a=> a.dg==="Prenhe IATF" || a.dg==="Prenhe Touro");
@@ -800,12 +845,146 @@ function barRow(lbl, val, max, hideStyle){
   </div>`;
 }
 
-/* Navegação inferior */
-document.querySelectorAll('.tab-list,.tab-list2,.tab-list3').forEach(b=>b.addEventListener('click', ()=>{ goScreen('list'); renderList(); }));
-document.querySelectorAll('.tab-home,.tab-home2,.tab-home3').forEach(b=>b.addEventListener('click', ()=>{ goScreen('home'); renderHome(); }));
-document.querySelectorAll('.tab-config,.tab-config2,.tab-config3').forEach(b=>b.addEventListener('click', ()=>{ goScreen('config'); renderConfig(); }));
+/* Navegação inferior (data-target genérico) */
+const SCREEN_RENDERERS = { home: renderHome, list: renderList, config: renderConfig, conferencia: renderConferencia };
+document.querySelectorAll('.nav-tabs button[data-target]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const t = b.dataset.target;
+    goScreen(t);
+    const fn = SCREEN_RENDERERS[t];
+    if(fn) fn();
+  });
+});
 document.getElementById('btn-list-back').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
 document.getElementById('btn-config-back').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
+document.getElementById('btn-conf-back').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
+
+/* ============================================================
+   CONFERÊNCIA — confirmar lotes antes de soltar o gado
+   ============================================================ */
+let lotes = [];
+
+async function loadLotes(){
+  if(!currentFarm){ lotes=[]; return; }
+  setLoading(true);
+  try{
+    const snap = await db.collection('lotes').where('fazendaId','==',currentFarm.id).get();
+    lotes = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    lotes.sort((a,b)=>{
+      const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return tb - ta;
+    });
+  } catch(e){ console.error(e); lotes=[]; } finally { setLoading(false); }
+}
+
+function pendentesPorPasto(){
+  const pend = animals.filter(a=> !a.confirmado);
+  const groups = {};
+  pend.forEach(a=>{
+    const p = a.pasto || "Sem pasto definido";
+    groups[p] = (groups[p]||0) + 1;
+  });
+  return { pend, groups };
+}
+
+function renderPendenteResumo(){
+  const { pend, groups } = pendentesPorPasto();
+  const wrap = document.getElementById('conf-pasto-summary');
+  const entries = Object.entries(groups);
+  if(entries.length === 0){
+    wrap.innerHTML = `<div class="empty-state" style="padding:26px 10px;">Nenhum animal pendente de liberação.</div>`;
+  } else {
+    wrap.innerHTML = `<div class="review-card">${entries.map(([p,n])=>
+      `<div class="review-row"><span class="k">${p}</span><span class="v">${n} ${n>1?'animais':'animal'}</span></div>`
+    ).join("")}</div>`;
+  }
+  document.getElementById('conf-total-pend').textContent = pend.length;
+  document.getElementById('btn-confirmar-lote').disabled = pend.length === 0;
+}
+
+function renderLotesHistorico(){
+  const wrap = document.getElementById('lotes-list');
+  if(!lotes.length){
+    wrap.innerHTML = `<div class="empty-state">Nenhum lote confirmado ainda.</div>`;
+    return;
+  }
+  wrap.innerHTML = lotes.map(l=>{
+    const porPasto = Object.entries(l.porPasto||{}).map(([p,n])=>`${p}: ${n}`).join(" · ");
+    return `<div class="animal-row" style="cursor:default;">
+      <div class="id-block">
+        <div class="tagid">${formatDataBR(l.data)} · ${l.hora||"—"}</div>
+        <div class="meta">${l.pessoa1||"—"} & ${l.pessoa2||"—"}<br>${porPasto||"—"}</div>
+      </div>
+      <div class="peso">${l.totalAnimais}<span style="font-size:11px;font-weight:600;"> un</span></div>
+    </div>`;
+  }).join("");
+}
+
+function switchConfSubtab(which){
+  document.getElementById('conf-pendente-view').classList.toggle('hide', which!=='pendente');
+  document.getElementById('conf-historico-view').classList.toggle('hide', which!=='confirmados');
+  document.getElementById('subtab-pendente').classList.toggle('active', which==='pendente');
+  document.getElementById('subtab-confirmados').classList.toggle('active', which==='confirmados');
+}
+document.getElementById('subtab-pendente').addEventListener('click', ()=> switchConfSubtab('pendente'));
+document.getElementById('subtab-confirmados').addEventListener('click', ()=>{ switchConfSubtab('confirmados'); renderLotesHistorico(); });
+
+async function renderConferencia(){
+  if(!currentFarm){ toast("Selecione uma fazenda primeiro."); goScreen('home'); return; }
+  await loadLotes();
+  switchConfSubtab('pendente');
+  renderPendenteResumo();
+  if(lotes.length){
+    document.getElementById('in-conf1').value = lotes[0].pessoa1 || "";
+    document.getElementById('in-conf2').value = lotes[0].pessoa2 || "";
+  }
+}
+
+document.getElementById('btn-confirmar-lote').addEventListener('click', async ()=>{
+  const { pend, groups } = pendentesPorPasto();
+  if(pend.length === 0){ toast("Nenhum animal pendente."); return; }
+  const p1 = document.getElementById('in-conf1').value.trim();
+  const p2 = document.getElementById('in-conf2').value.trim();
+  if(!p1 || !p2){ toast("Informe os dois conferentes."); return; }
+  if(!confirm(`Confirmar liberação de ${pend.length} animal(is)? Isso solta o gado do curral de separação.`)) return;
+
+  setLoading(true);
+  try{
+    const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+    const loteRef = db.collection('lotes').doc();
+    const batch = db.batch();
+    batch.set(loteRef, {
+      fazendaId: currentFarm.id,
+      data: todayISO(),
+      hora,
+      pessoa1: p1,
+      pessoa2: p2,
+      porPasto: groups,
+      totalAnimais: pend.length,
+      animalIds: pend.map(a=>a.id),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser.uid
+    });
+    pend.forEach(a=>{
+      batch.update(db.collection('animais').doc(a.id), {
+        confirmado: true,
+        loteId: loteRef.id,
+        confirmadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    await batch.commit();
+    toast(`Lote confirmado — ${pend.length} animal(is) liberado(s).`);
+    await loadAnimals();
+    await loadLotes();
+    switchConfSubtab('confirmados');
+    renderLotesHistorico();
+    renderHome();
+  } catch(e){
+    console.error(e);
+    toast("Erro ao confirmar o lote.");
+  } finally { setLoading(false); }
+});
 
 /* ============================================================
    CONFIGURAÇÕES — regras de pasto por faixa de peso
@@ -941,7 +1120,7 @@ function renderList(){
     <div class="animal-row" data-id="${a.id}">
       <div class="id-block">
         <div class="tagid">#${a.ordem} · ID ${a.id}</div>
-        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} ${a.dg && a.dg!=="Não se aplica" ? "· "+a.dg : ""}</div>
+        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} ${a.dg && a.dg!=="Não se aplica" ? "· "+a.dg : ""}${!a.confirmado ? ' · ⏳ pendente' : ''}</div>
       </div>
       <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
     </div>`).join("");
@@ -1329,6 +1508,8 @@ async function salvarAnimal(){
       toast("Animal atualizado.");
     } else {
       payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      payload.confirmado = false;
+      payload.loteId = null;
       await db.collection('animais').add(payload);
       toast("Animal cadastrado! Pronto para o próximo.");
     }
