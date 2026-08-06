@@ -258,6 +258,15 @@ body.login-mode #app{background:var(--ink);}
   position:absolute;inset:0;background:rgba(238,230,211,0.85);display:flex;align-items:center;justify-content:center;
   z-index:100;font-weight:700;color:var(--ink-soft);
 }
+
+/* ---------- modal ---------- */
+.modal-overlay{
+  position:absolute;inset:0;background:rgba(24,38,25,0.55);display:flex;align-items:flex-end;justify-content:center;z-index:80;
+}
+.modal-card{
+  background:var(--dust);width:100%;padding:22px 20px calc(22px + env(safe-area-inset-bottom));
+  border-radius:18px 18px 0 0;
+}
 </style>
 </head>
 <body class="login-mode">
@@ -299,9 +308,9 @@ body.login-mode #app{background:var(--ink);}
       </div>
 
       <div class="cta-main">
-        <div class="lbl">Auditoria rápida</div>
-        <h2>Cadastrar animal</h2>
-        <button class="btn btn-primary" id="btn-start-wizard">+ Novo animal</button>
+        <div class="lbl">Contagem de rebanho</div>
+        <h2>Iniciar auditoria</h2>
+        <button class="btn btn-primary" id="btn-start-wizard">▶ Iniciar auditoria</button>
       </div>
 
       <div class="grid2">
@@ -331,11 +340,31 @@ body.login-mode #app{background:var(--ink);}
       <div class="search-bar">
         <input type="text" id="search-input" placeholder="Buscar por ID ou Ordem...">
       </div>
+      <div class="btn-row" style="margin-bottom:16px;">
+        <button class="btn btn-secondary" id="btn-export-xlsx">⬇ Excel</button>
+        <button class="btn btn-secondary" id="btn-export-pdf">⬇ PDF</button>
+      </div>
       <div id="animal-list"></div>
     </div>
     <div class="nav-tabs">
       <button class="tab-home2"><div class="dot"></div>Início</button>
       <button class="tab-list2 active"><div class="dot"></div>Rebanho</button>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: DATA DE TRABALHO ============ -->
+  <div id="modal-start" class="modal-overlay hide">
+    <div class="modal-card">
+      <h1 class="page-title" style="margin-top:0;">Iniciar auditoria</h1>
+      <p class="page-sub">Data de trabalho desta auditoria (aplicada como padrão em cada animal, mas dá pra ajustar individualmente).</p>
+      <div class="field">
+        <label>Data</label>
+        <input type="date" id="in-workdate">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btn-modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="btn-modal-confirm">Começar</button>
+      </div>
     </div>
   </div>
 
@@ -362,6 +391,9 @@ body.login-mode #app{background:var(--ink);}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 /* ============================================================
    CONFIGURAÇÃO FIREBASE
@@ -402,6 +434,11 @@ const APART_FAIXAS = [
   {lbl:"421–500", min:421, max:500},
   {lbl:"> 501", min:501, max:Infinity}
 ];
+function formatDataBR(iso){
+  if(!iso) return "—";
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
 function faixaApartacao(peso){
   const f = APART_FAIXAS.find(f => peso>=f.min && peso<=f.max);
   return f ? f.lbl : "—";
@@ -416,7 +453,7 @@ function buildSteps(){
     {key:"raca", label:"Raça", render: renderStepRaca},
     {key:"categoria", label:"Categoria", render: renderStepCategoria},
     {key:"dg", label:"DG", render: renderStepDG, skip: s => s.data.sexo === "Macho"},
-    {key:"mes", label:"Mês", render: renderStepMes},
+    {key:"data", label:"Data", render: renderStepData},
     {key:"obs", label:"Obs", render: renderStepObs},
     {key:"revisar", label:"Revisar", render: renderStepRevisar}
   ];
@@ -424,13 +461,18 @@ function buildSteps(){
 
 let wiz = null; // {steps, idx, data, editingId}
 
-function newWizard(){
+let sessionWorkDate = null; // data de trabalho definida ao "Iniciar auditoria"
+
+function todayISO(){
   const now = new Date();
-  const mesAtual = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+}
+
+function newWizard(){
   wiz = {
     steps: buildSteps(),
     idx: 0,
-    data: { ordem:"", idAntigo:"", id:"", peso:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", mes:mesAtual, obs:"" },
+    data: { ordem:"", idAntigo:"", id:"", peso:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
     editingId: null,
     blockReason: null
   };
@@ -600,6 +642,59 @@ document.getElementById('btn-list-back').addEventListener('click', ()=>{ goScree
    LISTA / BUSCA
    ============================================================ */
 document.getElementById('search-input').addEventListener('input', renderList);
+document.getElementById('btn-export-xlsx').addEventListener('click', exportExcel);
+document.getElementById('btn-export-pdf').addEventListener('click', exportPDF);
+
+function exportRows(){
+  return animals.slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(a=>({
+    "Ordem": a.ordem,
+    "ID Antigo": a.idAntigo||"",
+    "ID": a.id,
+    "Peso (Kg)": a.peso,
+    "Apartação": a.apartacao || faixaApartacao(a.peso),
+    "Raça": a.raca,
+    "Categoria": a.categoria,
+    "Sexo": a.sexo,
+    "DG": a.dg,
+    "Idade Gestacional (meses)": a.idadeGestacional||"",
+    "Data": formatDataBR(a.dataTrabalho || a.mes),
+    "Obs": a.obs||""
+  }));
+}
+
+function exportFileName(ext){
+  const farm = (currentFarm?.nome||"rebanho").replace(/[^a-z0-9]+/gi,'-').toLowerCase();
+  return `auditoria-${farm}-${todayISO()}.${ext}`;
+}
+
+function exportExcel(){
+  if(!animals.length){ toast("Nenhum animal para exportar."); return; }
+  const rows = exportRows();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Rebanho");
+  XLSX.writeFile(wb, exportFileName("xlsx"));
+}
+
+function exportPDF(){
+  if(!animals.length){ toast("Nenhum animal para exportar."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'landscape' });
+  const rows = exportRows();
+  doc.setFontSize(14);
+  doc.text(`Auditoria de rebanho — ${currentFarm?.nome||""}`, 14, 14);
+  doc.setFontSize(9);
+  doc.text(`Exportado em ${formatDataBR(todayISO())} · ${animals.length} animais`, 14, 20);
+  doc.autoTable({
+    startY: 26,
+    head: [Object.keys(rows[0])],
+    body: rows.map(r=>Object.values(r)),
+    styles: { fontSize: 7.5, cellPadding: 2 },
+    headStyles: { fillColor: [24,38,25] }
+  });
+  doc.save(exportFileName("pdf"));
+}
+
 function renderList(){
   const q = document.getElementById('search-input').value.trim().toLowerCase();
   const listEl = document.getElementById('animal-list');
@@ -637,7 +732,7 @@ function openAnimalForEdit(docId){
   wiz.data = {
     ordem:a.ordem, idAntigo:a.idAntigo||"", id:a.id, peso:a.peso, raca:a.raca,
     categoria:a.categoria, sexo:a.sexo, dg:a.dg||"", idadeGestacional:a.idadeGestacional||"",
-    mes:a.mes, obs:a.obs||""
+    dataTrabalho:a.dataTrabalho || a.mes || todayISO(), obs:a.obs||""
   };
   wiz.idx = wiz.steps.length - 1; // vai direto pra revisão
   goScreen('wizard');
@@ -649,6 +744,15 @@ function openAnimalForEdit(docId){
    ============================================================ */
 document.getElementById('btn-start-wizard').addEventListener('click', ()=>{
   if(!currentFarm){ toast("Cadastre uma fazenda primeiro."); return; }
+  document.getElementById('in-workdate').value = sessionWorkDate || todayISO();
+  show('modal-start');
+});
+document.getElementById('btn-modal-cancel').addEventListener('click', ()=> hide('modal-start'));
+document.getElementById('btn-modal-confirm').addEventListener('click', ()=>{
+  const v = document.getElementById('in-workdate').value;
+  if(!v){ toast("Escolha uma data."); return; }
+  sessionWorkDate = v;
+  hide('modal-start');
   newWizard();
   const nextOrdem = animals.length ? Math.max(...animals.map(a=>Number(a.ordem)||0)) + 1 : 1;
   wiz.data.ordem = nextOrdem;
@@ -720,7 +824,7 @@ function validateStep(key){
     case 'raca': return !d.raca ? "Selecione a raça." : null;
     case 'categoria': return !d.categoria ? "Selecione a categoria." : null;
     case 'dg': return !d.dg ? "Selecione o diagnóstico." : null;
-    case 'mes': return !d.mes ? "Informe o mês de referência." : null;
+    case 'data': return !d.dataTrabalho ? "Informe a data de trabalho." : null;
     default: return null;
   }
 }
@@ -838,10 +942,10 @@ function renderStepDG(){
   return el;
 }
 
-function renderStepMes(){
-  const el = stepWrap("Mês de referência", "",
-    `<div class="field"><input type="month" id="in-mes" value="${wiz.data.mes}"></div>`);
-  setTimeout(()=> document.getElementById('in-mes').addEventListener('input', e=> wiz.data.mes = e.target.value));
+function renderStepData(){
+  const el = stepWrap("Data de trabalho", "Data em que este animal foi auditado.",
+    `<div class="field"><input type="date" id="in-data" value="${wiz.data.dataTrabalho}"></div>`);
+  setTimeout(()=> document.getElementById('in-data').addEventListener('input', e=> wiz.data.dataTrabalho = e.target.value));
   return el;
 }
 
@@ -861,7 +965,7 @@ function renderStepRevisar(){
     ["DG", d.dg], 
   ];
   if(d.dg==="Prenhe IATF"||d.dg==="Prenhe Touro") rows.push(["Idade gestacional", (d.idadeGestacional||"—")+" meses"]);
-  rows.push(["Mês", d.mes], ["Obs", d.obs||"—"]);
+  rows.push(["Data", formatDataBR(d.dataTrabalho)], ["Obs", d.obs||"—"]);
 
   const el = document.createElement('div');
   el.innerHTML = `<h1 class="page-title">Revisar</h1><p class="page-sub">Confira os dados antes de salvar.</p>
@@ -911,7 +1015,7 @@ async function salvarAnimal(){
     sexo: d.sexo,
     dg: d.dg || "Não se aplica",
     idadeGestacional: d.idadeGestacional || "",
-    mes: d.mes,
+    dataTrabalho: d.dataTrabalho,
     obs: d.obs || "",
     apartacao: faixaApartacao(Number(d.peso)),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
