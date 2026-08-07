@@ -203,6 +203,7 @@ body.login-mode #app{background:var(--ink);}
   display:flex;align-items:center;justify-content:space-between;
 }
 .opt-card.sel{border-color:var(--hide);background:#fbf1e4;}
+.opt-card:focus{outline:3px solid var(--hide);outline-offset:2px;}
 .opt-card .chk{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;}
 .opt-card.sel .chk{background:var(--hide);border-color:var(--hide);}
 
@@ -1461,7 +1462,7 @@ function renderStepIdade(){
 function renderStepRaca(){
   const el = stepWrap("Raça", "",
     `<div class="option-grid" id="opt-raca">
-      ${RACAS.map(r=>`<div class="opt-card ${wiz.data.raca===r?'sel':''}" data-v="${r}"><span>${r}</span><span class="chk"></span></div>`).join("")}
+      ${RACAS.map(r=>`<div class="opt-card ${wiz.data.raca===r?'sel':''}" data-v="${r}" tabindex="0"><span>${r}</span><span class="chk"></span></div>`).join("")}
     </div>`);
   setTimeout(()=>{
     document.querySelectorAll('#opt-raca .opt-card').forEach(card=>{
@@ -1469,6 +1470,7 @@ function renderStepRaca(){
         wiz.data.raca = card.dataset.v;
         document.querySelectorAll('#opt-raca .opt-card').forEach(c=>c.classList.remove('sel'));
         card.classList.add('sel');
+        card.focus();
       });
     });
   });
@@ -1478,7 +1480,7 @@ function renderStepRaca(){
 function renderStepCategoria(){
   const el = stepWrap("Categoria", "Define automaticamente o sexo do animal.",
     `<div class="option-grid" id="opt-cat">
-      ${CATEGORIAS.map(c=>`<div class="opt-card ${wiz.data.categoria===c?'sel':''}" data-v="${c}"><span>${c}</span><span class="chk"></span></div>`).join("")}
+      ${CATEGORIAS.map(c=>`<div class="opt-card ${wiz.data.categoria===c?'sel':''}" data-v="${c}" tabindex="0"><span>${c}</span><span class="chk"></span></div>`).join("")}
     </div>`);
   setTimeout(()=>{
     document.querySelectorAll('#opt-cat .opt-card').forEach(card=>{
@@ -1489,6 +1491,7 @@ function renderStepCategoria(){
         else if(wiz.data.dg === "Não se aplica") wiz.data.dg = "";
         document.querySelectorAll('#opt-cat .opt-card').forEach(c=>c.classList.remove('sel'));
         card.classList.add('sel');
+        card.focus();
       });
     });
   });
@@ -1499,7 +1502,7 @@ function renderStepDG(){
   const opts = DG_OPCOES.filter(o=>o!=="Não se aplica");
   const el = stepWrap("Diagnóstico gestacional", "",
     `<div class="option-grid" id="opt-dg">
-      ${opts.map(o=>`<div class="opt-card ${wiz.data.dg===o?'sel':''}" data-v="${o}"><span>${o}</span><span class="chk"></span></div>`).join("")}
+      ${opts.map(o=>`<div class="opt-card ${wiz.data.dg===o?'sel':''}" data-v="${o}" tabindex="0"><span>${o}</span><span class="chk"></span></div>`).join("")}
     </div>
     <div class="field hide" id="idade-gest-field" style="margin-top:16px;">
       <label>Idade gestacional (meses)</label>
@@ -1517,6 +1520,13 @@ function renderStepDG(){
         document.querySelectorAll('#opt-dg .opt-card').forEach(c=>c.classList.remove('sel'));
         card.classList.add('sel');
         toggleIdade();
+        // se abrir o campo de idade gestacional, foca nele pra digitar direto; senão foca o card pro Enter avançar
+        const idadeField = document.getElementById('idade-gest-field');
+        if(idadeField && !idadeField.classList.contains('hide')){
+          document.getElementById('in-idadegest').focus();
+        } else {
+          card.focus();
+        }
       });
     });
     document.getElementById('in-idadegest').addEventListener('input', e=> wiz.data.idadeGestacional = e.target.value);
