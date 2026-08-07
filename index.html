@@ -1307,6 +1307,15 @@ function renderWizard(){
   document.getElementById('btn-wiz-next').textContent = (step.key==='revisar')
     ? (wiz.editingId ? 'Salvar alterações' : 'Confirmar cadastro')
     : 'Confirmar e avançar';
+
+  // foca automaticamente o primeiro campo digitável do passo (não mexe em option-grid: Raça/Categoria/DG continuam por clique)
+  setTimeout(()=>{
+    const firstField = content.querySelector('input:not([type=checkbox]), textarea');
+    if(firstField){
+      firstField.focus();
+      if(firstField.select && firstField.type !== 'date' && firstField.type !== 'month') firstField.select();
+    }
+  }, 40);
 }
 
 document.getElementById('btn-wiz-back').addEventListener('click', ()=>{
