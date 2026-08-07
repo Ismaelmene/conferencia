@@ -170,7 +170,7 @@ body.login-mode #app{background:var(--ink);}
 
 .section-title{font-family:'Archivo Expanded';font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:0.03em;color:var(--grass-deep);margin:8px 0 10px;}
 .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13.5px;}
-.bar-row .bar-lbl{width:96px;flex-shrink:0;font-weight:600;color:var(--ink-soft);}
+.bar-row .bar-lbl{width:132px;flex-shrink:0;font-weight:600;color:var(--ink-soft);font-size:12.5px;line-height:1.25;}
 .bar-track{flex:1;background:var(--dust-deep);border-radius:6px;height:14px;overflow:hidden;}
 .bar-fill{height:100%;background:var(--grass);border-radius:6px;}
 .bar-fill.hide-fill{background:var(--hide);}
@@ -388,7 +388,7 @@ body.login-mode #app{background:var(--ink);}
         <div class="stat-card"><div class="num" id="stat-prenhez">0%</div><div class="lbl">Prenhez</div></div>
       </div>
 
-      <div class="section-title">Por categoria</div>
+      <div class="section-title">Por categoria e raça</div>
       <div id="cat-bars"></div>
 
       <div class="section-title" style="margin-top:16px;">Por sexo</div>
@@ -593,13 +593,14 @@ let currentFarm = null; // {id, nome}
 let animals = []; // cache dos animais da fazenda atual
 let signupMode = false;
 
-const CATEGORIAS = ["Bezerro","Bezerra","Garrote","Novilha","Vaca","Touro"];
+const CATEGORIAS = ["Bezerro","Bezerra","Garrote","Novilha","Vaca","Boi","Touro"];
 const SEXO_POR_CATEGORIA = {
-  "Bezerro":"Macho","Garrote":"Macho","Touro":"Macho",
+  "Bezerro":"Macho","Garrote":"Macho","Boi":"Macho","Touro":"Macho",
   "Bezerra":"Fêmea","Novilha":"Fêmea","Vaca":"Fêmea"
 };
-const RACAS = ["Nelore","Cruzado","Outra"];
+const RACAS = ["Nelore","Cruzado","Angus","Outros"];
 const DG_OPCOES = ["Prenhe IATF","Prenhe Touro","Vazia","Não se aplica"];
+const PARIDADE_OPCOES = ["Primípara","Multípara"];
 const APART_FAIXAS = [
   {lbl:"< 360", min:-Infinity, max:359},
   {lbl:"361–390", min:361, max:390},
@@ -674,7 +675,7 @@ function newWizard(){
   wiz = {
     steps: buildSteps(),
     idx: 0,
-    data: { ordem:"", idAntigo:"", id:"", peso:"", pasto:"", idadeMeses:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
+    data: { ordem:"", idAntigo:"", id:"", peso:"", pasto:"", idadeMeses:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", paridade:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
     editingId: null,
     blockReason: null
   };
@@ -834,12 +835,19 @@ function renderHome(){
   document.getElementById('stat-prenhez').textContent = pctPrenhez + "%";
 
   const catBars = document.getElementById('cat-bars');
-  catBars.innerHTML = "";
-  const maxCat = Math.max(1, ...CATEGORIAS.map(c=>animals.filter(a=>a.categoria===c).length));
-  CATEGORIAS.forEach(c=>{
-    const n = animals.filter(a=>a.categoria===c).length;
-    catBars.innerHTML += barRow(c, n, maxCat, false);
+  const combos = [];
+  CATEGORIAS.forEach(cat=>{
+    RACAS.forEach(raca=>{
+      const n = animals.filter(a=>a.categoria===cat && a.raca===raca).length;
+      if(n>0) combos.push({ label: `${cat} ${raca}`, n });
+    });
   });
+  if(!combos.length){
+    catBars.innerHTML = `<div class="empty-state" style="padding:16px 10px;">Nenhum animal cadastrado ainda.</div>`;
+  } else {
+    const maxCombo = Math.max(1, ...combos.map(c=>c.n));
+    catBars.innerHTML = combos.map(c=>barRow(c.label, c.n, maxCombo, false)).join("");
+  }
 
   const sexoBars = document.getElementById('sexo-bars');
   sexoBars.innerHTML = "";
@@ -1179,6 +1187,7 @@ function exportRows(){
     "Sexo": a.sexo,
     "DG": a.dg,
     "Idade Gestacional (meses)": a.idadeGestacional||"",
+    "Paridade": a.paridade||"",
     "Data": formatDataBR(a.dataTrabalho || a.mes),
     "Obs": a.obs||""
   }));
@@ -1253,7 +1262,7 @@ function openAnimalForEdit(docId){
   wiz.editingId = docId;
   wiz.data = {
     ordem:a.ordem, idAntigo:a.idAntigo||"", id:a.id, peso:a.peso, pasto:a.pasto||"", idadeMeses: (a.idadeMeses!==undefined?a.idadeMeses:""), raca:a.raca,
-    categoria:a.categoria, sexo:a.sexo, dg:a.dg||"", idadeGestacional:a.idadeGestacional||"",
+    categoria:a.categoria, sexo:a.sexo, dg:a.dg||"", idadeGestacional:a.idadeGestacional||"", paridade:a.paridade||"",
     dataTrabalho:a.dataTrabalho || a.mes || todayISO(), obs:a.obs||""
   };
   wiz.idx = wiz.steps.length - 1; // vai direto pra revisão
@@ -1441,7 +1450,10 @@ function validateStep(key){
     case 'idade': return (d.idadeMeses===""||isNaN(d.idadeMeses)||Number(d.idadeMeses)<0) ? "Informe a idade em meses." : null;
     case 'raca': return !d.raca ? "Selecione a raça." : null;
     case 'categoria': return !d.categoria ? "Selecione a categoria." : null;
-    case 'dg': return !d.dg ? "Selecione o diagnóstico." : null;
+    case 'dg':
+      if(!d.dg) return "Selecione o diagnóstico.";
+      if((d.dg==="Prenhe IATF"||d.dg==="Prenhe Touro") && !d.paridade) return "Informe se é primípara ou multípara.";
+      return null;
     case 'data': return !d.dataTrabalho ? "Informe a data de trabalho." : null;
     default: return null;
   }
@@ -1559,11 +1571,28 @@ function renderStepDG(){
     <div class="field hide" id="idade-gest-field" style="margin-top:16px;">
       <label>Idade gestacional (meses)</label>
       <input type="number" id="in-idadegest" value="${wiz.data.idadeGestacional}" inputmode="numeric">
+    </div>
+    <div class="field hide" id="paridade-field" style="margin-top:16px;">
+      <label>Paridade</label>
+      <div class="option-grid" id="opt-paridade">
+        ${PARIDADE_OPCOES.map((p,i)=>`<div class="opt-card ${wiz.data.paridade===p?'sel':''}" data-v="${p}" tabindex="0"><span class="opt-label"><span class="opt-num">${i+1}</span>${p}</span><span class="chk"></span></div>`).join("")}
+      </div>
     </div>`);
   const toggleIdade = ()=>{
-    const f = document.getElementById('idade-gest-field');
-    if(wiz.data.dg==="Prenhe IATF" || wiz.data.dg==="Prenhe Touro") f.classList.remove('hide');
-    else f.classList.add('hide');
+    const prenhe = wiz.data.dg==="Prenhe IATF" || wiz.data.dg==="Prenhe Touro";
+    document.getElementById('idade-gest-field').classList.toggle('hide', !prenhe);
+    document.getElementById('paridade-field').classList.toggle('hide', !prenhe);
+    if(!prenhe) wiz.data.paridade = "";
+  };
+  const bindParidadeCards = ()=>{
+    document.querySelectorAll('#opt-paridade .opt-card').forEach(card=>{
+      card.addEventListener('click', ()=>{
+        wiz.data.paridade = card.dataset.v;
+        document.querySelectorAll('#opt-paridade .opt-card').forEach(c=>c.classList.remove('sel'));
+        card.classList.add('sel');
+        card.focus();
+      });
+    });
   };
   setTimeout(()=>{
     document.querySelectorAll('#opt-dg .opt-card').forEach(card=>{
@@ -1582,6 +1611,7 @@ function renderStepDG(){
       });
     });
     document.getElementById('in-idadegest').addEventListener('input', e=> wiz.data.idadeGestacional = e.target.value);
+    bindParidadeCards();
     toggleIdade();
   });
   return el;
@@ -1611,7 +1641,10 @@ function renderStepRevisar(){
     ["Raça", d.raca], ["Categoria", d.categoria], ["Sexo", d.sexo],
     ["DG", d.dg], 
   ];
-  if(d.dg==="Prenhe IATF"||d.dg==="Prenhe Touro") rows.push(["Idade gestacional", (d.idadeGestacional||"—")+" meses"]);
+  if(d.dg==="Prenhe IATF"||d.dg==="Prenhe Touro"){
+    rows.push(["Idade gestacional", (d.idadeGestacional||"—")+" meses"]);
+    rows.push(["Paridade", d.paridade||"—"]);
+  }
   rows.push(["Data", formatDataBR(d.dataTrabalho)], ["Obs", d.obs||"—"]);
 
   const el = document.createElement('div');
@@ -1695,6 +1728,7 @@ async function salvarAnimal(){
     sexo: d.sexo,
     dg: d.dg || "Não se aplica",
     idadeGestacional: d.idadeGestacional || "",
+    paridade: d.paridade || "",
     dataTrabalho: d.dataTrabalho,
     obs: d.obs || "",
     apartacao: faixaApartacao(Number(d.peso)),
