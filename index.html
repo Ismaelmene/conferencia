@@ -1315,13 +1315,17 @@ function renderWizard(){
   document.getElementById('btn-wiz-next').textContent = (step.key==='revisar')
     ? (wiz.editingId ? 'Salvar alterações' : 'Confirmar cadastro')
     : 'Confirmar e avançar';
+  if(step.key !== 'revisar') document.getElementById('btn-wiz-next').disabled = false;
 
   // foca automaticamente o primeiro campo digitável do passo (não mexe em option-grid: Raça/Categoria/DG continuam por clique)
+  // Passos sem campo de texto/número (ex: Observações) ficam sem nada em foco, pra Enter avançar direto.
   setTimeout(()=>{
-    const firstField = content.querySelector('input:not([type=checkbox]), textarea');
+    const firstField = content.querySelector('input:not([type=checkbox])');
     if(firstField){
       firstField.focus();
       if(firstField.select && firstField.type !== 'date' && firstField.type !== 'month') firstField.select();
+    } else if(document.activeElement && document.activeElement !== document.body){
+      document.activeElement.blur();
     }
   }, 40);
 }
