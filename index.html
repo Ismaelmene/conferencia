@@ -1362,23 +1362,27 @@ document.getElementById('btn-wiz-next').addEventListener('click', async ()=>{
 
 /* ============================================================
    ENTER = avançar (sem precisar clicar no botão)
-   Não intercepta Enter dentro de textarea (Obs precisa de quebra de linha).
+   Listener global no document — funciona mesmo se o foco não estiver
+   "grudado" em nenhum elemento específico (era isso que falhava nos
+   cards de Raça/Categoria/DG). Não intercepta Enter em textarea.
    ============================================================ */
-function bindEnterAdvance(containerSelector, btnId){
-  const container = document.querySelector(containerSelector);
-  if(!container) return;
-  container.addEventListener('keydown', (e)=>{
-    if(e.key !== 'Enter') return;
-    if(e.target.tagName === 'TEXTAREA') return;
-    e.preventDefault();
-    const btn = document.getElementById(btnId);
-    if(btn && !btn.disabled) btn.click();
-  });
+function currentEnterBtnId(){
+  if(!document.getElementById('modal-start').classList.contains('hide')) return 'btn-modal-confirm';
+  if(!document.getElementById('modal-farm').classList.contains('hide')) return 'btn-farm-add';
+  if(!document.getElementById('screen-wizard').classList.contains('hide')) return 'btn-wiz-next';
+  if(!document.getElementById('screen-login').classList.contains('hide')) return 'btn-login';
+  return null;
 }
-bindEnterAdvance('#screen-wizard', 'btn-wiz-next');
-bindEnterAdvance('#screen-login', 'btn-login');
-bindEnterAdvance('#modal-start', 'btn-modal-confirm');
-bindEnterAdvance('#modal-farm', 'btn-farm-add');
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter') return;
+  if(e.target && e.target.tagName === 'TEXTAREA') return;
+  const btnId = currentEnterBtnId();
+  if(!btnId) return;
+  const btn = document.getElementById(btnId);
+  if(!btn) return;
+  e.preventDefault();
+  if(!btn.disabled) btn.click();
+});
 
 function validateStep(key){
   const d = wiz.data;
