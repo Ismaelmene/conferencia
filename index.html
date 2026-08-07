@@ -1350,6 +1350,26 @@ document.getElementById('btn-wiz-next').addEventListener('click', async ()=>{
   await salvarAnimal();
 });
 
+/* ============================================================
+   ENTER = avançar (sem precisar clicar no botão)
+   Não intercepta Enter dentro de textarea (Obs precisa de quebra de linha).
+   ============================================================ */
+function bindEnterAdvance(containerSelector, btnId){
+  const container = document.querySelector(containerSelector);
+  if(!container) return;
+  container.addEventListener('keydown', (e)=>{
+    if(e.key !== 'Enter') return;
+    if(e.target.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    const btn = document.getElementById(btnId);
+    if(btn && !btn.disabled) btn.click();
+  });
+}
+bindEnterAdvance('#screen-wizard', 'btn-wiz-next');
+bindEnterAdvance('#screen-login', 'btn-login');
+bindEnterAdvance('#modal-start', 'btn-modal-confirm');
+bindEnterAdvance('#modal-farm', 'btn-farm-add');
+
 function validateStep(key){
   const d = wiz.data;
   switch(key){
