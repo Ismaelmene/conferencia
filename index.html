@@ -581,6 +581,7 @@ body.login-mode #app{background:var(--ink);}
     <div class="screen" style="padding-top:0;">
       <div class="btn-row" style="margin-bottom:16px; flex-wrap:wrap;">
         <button class="btn btn-secondary sub-tab active" id="atab-visao">Visão geral</button>
+        <button class="btn btn-secondary sub-tab" id="atab-fazendas">Fazendas</button>
         <button class="btn btn-secondary sub-tab" id="atab-auditores">Auditores</button>
         <button class="btn btn-secondary sub-tab" id="atab-operacao">Adicionar operação</button>
       </div>
@@ -627,6 +628,18 @@ body.login-mode #app{background:var(--ink);}
         <div id="admin-feed"></div>
       </div>
 
+      <!-- FAZENDAS -->
+      <div id="admin-fazendas-view" class="hide">
+        <div class="section-title">Cadastrar fazenda / retiro</div>
+        <div class="field"><label>Nome da fazenda</label><input type="text" id="fz-nome" placeholder="Ex: Fazenda Boa Vista"></div>
+        <div class="field"><label>Retiro (opcional)</label><input type="text" id="fz-retiro" placeholder="Ex: Retiro Sede, Retiro do Rio..."></div>
+        <div class="field"><label>Grupo (opcional)</label><input type="text" id="fz-grupo" placeholder="Ex: Grupo Ademicon Norte"></div>
+        <button class="btn btn-primary" id="btn-add-fazenda" style="margin-bottom:20px;">+ Cadastrar fazenda</button>
+
+        <div class="section-title">Fazendas cadastradas</div>
+        <div id="admin-fazendas-list"></div>
+      </div>
+
       <!-- AUDITORES -->
       <div id="admin-auditores-view" class="hide">
         <div class="section-title">Cadastrar novo auditor</div>
@@ -659,19 +672,14 @@ body.login-mode #app{background:var(--ink);}
   <div id="modal-farm" class="modal-overlay hide">
     <div class="modal-card">
       <h1 class="page-title" style="margin-top:0;">Fazendas</h1>
-      <p class="page-sub">Escolha a fazenda ou cadastre uma nova. Se houver mais de um auditor na mesma fazenda ao mesmo tempo, use o mesmo nome de fazenda e diferencie pelo retiro — os dados são cruzados automaticamente pra não duplicar ID.</p>
-      <div id="farm-options" class="option-grid" style="margin-bottom:16px;"></div>
+      <p class="page-sub">Digite o nome da fazenda pra ver os retiros e selecionar onde você vai auditar. As fazendas são cadastradas pelo administrador.</p>
       <div class="field">
-        <label>Nome da fazenda</label>
-        <input type="text" id="in-newfarm" placeholder="Ex: Fazenda Boa Vista">
+        <label>Buscar fazenda</label>
+        <input type="text" id="in-search-farm" placeholder="Digite o nome da fazenda...">
       </div>
-      <div class="field">
-        <label>Retiro (opcional)</label>
-        <input type="text" id="in-newretiro" placeholder="Ex: Retiro Sede, Retiro do Rio...">
-      </div>
+      <div id="farm-options" style="margin:14px 0;max-height:340px;overflow-y:auto;"></div>
       <div class="btn-row">
         <button class="btn btn-secondary" id="btn-farm-close">Fechar</button>
-        <button class="btn btn-primary" id="btn-farm-add">+ Cadastrar</button>
       </div>
     </div>
   </div>
@@ -744,6 +752,7 @@ const secondaryAuth = secondaryApp.auth();
    ESTADO
    ============================================================ */
 let currentUser = null;
+let currentAuditorNome = "";
 let farms = [];
 let currentFarm = null; // {id, nome}
 let animals = []; // cache dos animais da fazenda atual
@@ -946,6 +955,7 @@ auth.onAuthStateChanged(async (user)=>{
     try{
       const doc = await db.collection('auditores').doc(user.uid).get();
       liberado = doc.exists && doc.data().ativo === true;
+      if(liberado) currentAuditorNome = doc.data().nome || "";
     }catch(e){ console.error(e); }
     if(!liberado){
       const errEl = document.getElementById('login-err');
@@ -957,7 +967,7 @@ auth.onAuthStateChanged(async (user)=>{
     await loadFarms();
     goScreen('home');
     renderHome();
-    if(farms.length === 0) openFarmModal();
+    if(!currentFarm) openFarmModal();
   } else {
     currentUser = null;
     isAdmin = false;
@@ -966,21 +976,15 @@ auth.onAuthStateChanged(async (user)=>{
 });
 
 /* ============================================================
-   FAZENDAS
+   FAZENDAS — cadastradas só pelo admin; o auditor busca e seleciona
    ============================================================ */
 async function loadFarms(){
   setLoading(true);
   try{
-    const snap = await db.collection('fazendas').where('uid','==',currentUser.uid).get();
+    // todas as fazendas/retiros cadastrados pelo admin ficam visíveis pra qualquer auditor selecionar
+    const snap = await db.collection('fazendas').get();
     farms = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    if(farms.length === 0){
-      const savedName = null;
-      // sem fazenda cadastrada ainda
-      currentFarm = null;
-    } else if(!currentFarm){
-      currentFarm = farms[0];
-    }
-    document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Cadastrar fazenda";
+    document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Selecionar fazenda";
     if(currentFarm) await loadAnimals();
   } finally { setLoading(false); }
 }
@@ -992,57 +996,54 @@ function slugifyFarmName(nome){
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos
     .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 }
-document.getElementById('btn-farm-add').addEventListener('click', async ()=>{
-  const nome = document.getElementById('in-newfarm').value.trim();
-  const retiro = document.getElementById('in-newretiro').value.trim();
-  if(!nome){ toast("Digite o nome da fazenda."); return; }
-  setLoading(true);
-  try{
-    const farmGroupKey = slugifyFarmName(nome);
-    const nomeCompleto = retiro ? `${nome} — ${retiro}` : nome;
-    const ref = await db.collection('fazendas').add({
-      uid: currentUser.uid,
-      nome,
-      retiro: retiro || "",
-      nomeCompleto,
-      farmGroupKey,
-      grupo: "",
-      auditorEmail: currentUser.email,
-      auditorNome: currentUser.email.split('@')[0],
-      destinosExtras: [],
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    currentFarm = { id: ref.id, nome, retiro, nomeCompleto, farmGroupKey, grupo:"", destinosExtras:[] };
-    farms.push(currentFarm);
-    document.getElementById('in-newfarm').value = "";
-    document.getElementById('in-newretiro').value = "";
-    document.getElementById('farm-picker-name').textContent = currentFarm.nomeCompleto;
-    await loadAnimals();
-    renderHome();
-    hide('modal-farm');
-    toast("Fazenda cadastrada.");
-  } finally { setLoading(false); }
-});
-function openFarmModal(){
+function selectFarm(farm){
+  currentFarm = farm;
+  document.getElementById('farm-picker-name').textContent = currentFarm.nomeCompleto || currentFarm.nome;
+  loadAnimals().then(()=>{ renderHome(); });
+  hide('modal-farm');
+}
+function renderFarmSearchResults(){
   const wrap = document.getElementById('farm-options');
+  const q = (document.getElementById('in-search-farm').value || "").trim().toLowerCase();
   if(farms.length === 0){
-    wrap.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">Nenhuma fazenda ainda — cadastre a primeira abaixo.</p>`;
-  } else {
-    wrap.innerHTML = farms.map(f => `
-      <div class="opt-card ${currentFarm && currentFarm.id===f.id ? 'sel':''}" data-id="${f.id}">
-        <span>${f.nomeCompleto || f.nome}</span><span class="chk"></span>
-      </div>`).join("");
-    wrap.querySelectorAll('.opt-card').forEach(card=>{
-      card.addEventListener('click', async ()=>{
-        currentFarm = farms.find(f=>f.id===card.dataset.id);
-        document.getElementById('farm-picker-name').textContent = currentFarm.nomeCompleto || currentFarm.nome;
-        await loadAnimals();
-        renderHome();
-        hide('modal-farm');
-      });
-    });
+    wrap.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">Nenhuma fazenda cadastrada ainda. Fale com o administrador.</p>`;
+    return;
   }
+  const filtradas = q ? farms.filter(f => (f.nome||"").toLowerCase().includes(q)) : farms;
+  if(!filtradas.length){
+    wrap.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">Nenhuma fazenda encontrada com esse nome.</p>`;
+    return;
+  }
+  // agrupa por nome de fazenda, mostrando os retiros de cada uma
+  const porNome = {};
+  filtradas.forEach(f=>{
+    const key = f.farmGroupKey || f.nome;
+    if(!porNome[key]) porNome[key] = { nome: f.nome, retiros: [] };
+    porNome[key].retiros.push(f);
+  });
+  wrap.innerHTML = Object.values(porNome).map(grupo => `
+    <div style="margin-bottom:14px;">
+      <div class="section-title" style="margin:4px 0 8px;">${grupo.nome}</div>
+      <div class="option-grid">
+        ${grupo.retiros.map(f => `
+          <div class="opt-card ${currentFarm && currentFarm.id===f.id ? 'sel':''}" data-id="${f.id}">
+            <span>${f.retiro || 'Sede'}</span><span class="chk"></span>
+          </div>`).join("")}
+      </div>
+    </div>`).join("");
+  wrap.querySelectorAll('.opt-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const f = farms.find(x=>x.id===card.dataset.id);
+      if(f) selectFarm(f);
+    });
+  });
+}
+document.getElementById('in-search-farm').addEventListener('input', renderFarmSearchResults);
+function openFarmModal(){
+  document.getElementById('in-search-farm').value = "";
+  renderFarmSearchResults();
   show('modal-farm');
+  setTimeout(()=> document.getElementById('in-search-farm').focus(), 50);
 }
 
 /* ============================================================
@@ -1671,7 +1672,6 @@ document.getElementById('btn-wiz-next').addEventListener('click', async ()=>{
    ============================================================ */
 function currentEnterBtnId(){
   if(!document.getElementById('modal-start').classList.contains('hide')) return 'btn-modal-confirm';
-  if(!document.getElementById('modal-farm').classList.contains('hide')) return 'btn-farm-add';
   if(!document.getElementById('screen-wizard').classList.contains('hide')) return 'btn-wiz-next';
   if(!document.getElementById('screen-login').classList.contains('hide')) return 'btn-login';
   return null;
@@ -2093,7 +2093,7 @@ async function salvarAnimal(){
     retiro: currentFarm.retiro || "",
     grupo: currentFarm.grupo || "",
     auditorEmail: currentUser.email,
-    auditorNome: (currentFarm.auditorNome) || currentUser.email.split('@')[0],
+    auditorNome: currentAuditorNome || currentUser.email.split('@')[0],
     ordem: Number(d.ordem),
     idAntigo: d.idAntigo || "",
     id: String(d.id),
@@ -2158,13 +2158,16 @@ document.getElementById('btn-admin-logout').addEventListener('click', ()=>{
 
 function switchAdminTab(which){
   document.getElementById('admin-visao-view').classList.toggle('hide', which!=='visao');
+  document.getElementById('admin-fazendas-view').classList.toggle('hide', which!=='fazendas');
   document.getElementById('admin-auditores-view').classList.toggle('hide', which!=='auditores');
   document.getElementById('admin-operacao-view').classList.toggle('hide', which!=='operacao');
   document.getElementById('atab-visao').classList.toggle('active', which==='visao');
+  document.getElementById('atab-fazendas').classList.toggle('active', which==='fazendas');
   document.getElementById('atab-auditores').classList.toggle('active', which==='auditores');
   document.getElementById('atab-operacao').classList.toggle('active', which==='operacao');
 }
 document.getElementById('atab-visao').addEventListener('click', ()=> switchAdminTab('visao'));
+document.getElementById('atab-fazendas').addEventListener('click', ()=>{ switchAdminTab('fazendas'); renderAdminFazendasList(); });
 document.getElementById('atab-auditores').addEventListener('click', ()=>{ switchAdminTab('auditores'); renderAuditoresList(); });
 document.getElementById('atab-operacao').addEventListener('click', ()=> switchAdminTab('operacao'));
 
@@ -2344,6 +2347,54 @@ function renderAdminFeed(lista){
 }
 
 /* ---- auditores ---- */
+/* ---- fazendas (cadastro pelo admin) ---- */
+async function renderAdminFazendasList(){
+  const wrap = document.getElementById('admin-fazendas-list');
+  setLoading(true);
+  try{
+    const snap = await db.collection('fazendas').get();
+    adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  } catch(e){ console.error(e); } finally { setLoading(false); }
+  if(!adminFazendas.length){ wrap.innerHTML = `<div class="empty-state">Nenhuma fazenda cadastrada ainda.</div>`; return; }
+  const porNome = {};
+  adminFazendas.forEach(f=>{
+    const key = f.farmGroupKey || f.nome;
+    if(!porNome[key]) porNome[key] = { nome:f.nome, retiros:[] };
+    porNome[key].retiros.push(f);
+  });
+  wrap.innerHTML = Object.values(porNome).sort((a,b)=>a.nome.localeCompare(b.nome)).map(grupo => `
+    <div class="review-card" style="margin-bottom:12px;">
+      <div class="review-row"><span class="k" style="font-weight:900;">${grupo.nome}</span><span class="v">${grupo.retiros[0].grupo ? '🏷 '+grupo.retiros[0].grupo : ''}</span></div>
+      ${grupo.retiros.map(r=>`<div class="review-row"><span class="k">${r.retiro||'Sede'}</span><span class="v">${r.auditorNome||'—'}</span></div>`).join("")}
+    </div>`).join("");
+}
+document.getElementById('btn-add-fazenda').addEventListener('click', async ()=>{
+  const nome = document.getElementById('fz-nome').value.trim();
+  const retiro = document.getElementById('fz-retiro').value.trim();
+  const grupo = document.getElementById('fz-grupo').value.trim();
+  if(!nome){ toast("Digite o nome da fazenda."); return; }
+  setLoading(true);
+  try{
+    const farmGroupKey = slugifyFarmName(nome);
+    const nomeCompleto = retiro ? `${nome} — ${retiro}` : nome;
+    await db.collection('fazendas').add({
+      uid: currentUser.uid,
+      nome, retiro: retiro||"", nomeCompleto, farmGroupKey, grupo: grupo||"",
+      auditorEmail: "", auditorNome: "",
+      destinosExtras: [],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('fz-nome').value = "";
+    document.getElementById('fz-retiro').value = "";
+    document.getElementById('fz-grupo').value = "";
+    toast("Fazenda cadastrada.");
+    renderAdminFazendasList();
+  } catch(e){
+    console.error(e);
+    toast("Erro ao cadastrar fazenda.");
+  } finally { setLoading(false); }
+});
+
 async function renderAuditoresList(){
   const wrap = document.getElementById('auditores-list');
   setLoading(true);
