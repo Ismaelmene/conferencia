@@ -21,6 +21,10 @@
   --ok-bg:#dde8d3;
   --white:#fffdf8;
   --line:#d8cba9;
+  --blue:#2c5a86;
+  --blue-dark:#1f4467;
+  --go-green:#3f8f4a;
+  --go-green-dark:#2f7038;
   --shadow:0 2px 0 rgba(24,38,25,0.08);
   --radius:14px;
   font-size:16px;
@@ -156,12 +160,12 @@ body.login-mode #app{background:var(--ink);}
 .farm-picker .chg{font-size:12px;color:var(--hide-dark);font-weight:700;}
 
 .cta-main{
-  background:var(--ink);color:var(--white);border-radius:var(--radius);
+  background:var(--blue);color:var(--white);border-radius:var(--radius);
   padding:22px;margin-bottom:14px;position:relative;overflow:hidden;
 }
-.cta-main .lbl{font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--dust-deep);font-weight:700;}
-.cta-main h2{font-family:'Archivo Expanded';font-size:22px;margin:6px 0 14px;font-weight:900;}
-.cta-main .btn-primary{background:var(--hide);}
+.cta-main .lbl{font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#cfe0ee;font-weight:700;}
+.cta-main .btn-primary{background:var(--go-green);margin-top:12px;}
+.cta-main .btn-primary:active{background:var(--go-green-dark);}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
 .stat-card{background:var(--white);border:2px solid var(--line);border-radius:12px;padding:14px;}
@@ -217,6 +221,15 @@ body.login-mode #app{background:var(--ink);}
 .big-num-wrap{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;}
 .big-num-wrap input{font-family:'Archivo Expanded';font-size:34px;font-weight:900;padding:14px 12px;text-align:center;}
 .suffix{font-size:15px;font-weight:700;color:var(--ink-soft);}
+.locked-num{
+  font-family:'Archivo Expanded';font-size:44px;font-weight:900;text-align:center;
+  background:var(--white);border:2px dashed var(--line);border-radius:12px;padding:22px 14px;color:var(--ink);
+  position:relative;
+}
+.locked-num .lock-tag{
+  display:block;font-family:'Inter';font-size:11.5px;font-weight:700;color:var(--ink-soft);
+  text-transform:uppercase;letter-spacing:0.05em;margin-top:6px;
+}
 
 .apart-hint{
   margin-top:10px;padding:10px 13px;border-radius:9px;background:var(--ok-bg);
@@ -228,7 +241,9 @@ body.login-mode #app{background:var(--ink);}
 .review-row:last-child{border-bottom:none;}
 .review-row .k{color:var(--ink-soft);font-weight:600;}
 .review-row .v{font-weight:700;font-family:'IBM Plex Mono';}
-.review-row .edit{color:var(--hide-dark);font-weight:700;font-size:12.5px;margin-left:8px;cursor:pointer;}
+.review-row .edit{color:var(--hide-dark);font-weight:700;font-size:12.5px;margin-left:8px;cursor:pointer;font-family:'Inter';}
+.review-row.editable{cursor:pointer;}
+.review-row.editable:active{background:#f7efdf;}
 
 .block-banner{
   background:var(--alert-bg);border:2px solid var(--alert);color:var(--alert);
@@ -281,6 +296,39 @@ body.login-mode #app{background:var(--ink);}
   margin-top:8px;padding:9px 13px;border-radius:9px;background:#e7ddc4;
   font-size:13px;font-weight:700;color:var(--hide-dark);
 }
+.chip-row{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:10px;}
+.chip-lbl{font-size:12px;font-weight:700;color:var(--ink-soft);width:100%;margin-bottom:2px;}
+.chip{
+  background:var(--white);border:2px solid var(--line);border-radius:20px;padding:6px 13px;
+  font-size:12.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;
+}
+.chip:active{background:var(--dust-deep);}
+
+/* ---------- admin ---------- */
+.chart-box{
+  background:var(--white);border:2px solid var(--line);border-radius:12px;
+  padding:14px;margin-bottom:6px;height:220px;position:relative;
+}
+.live-dot{
+  display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--alert);
+  margin-left:6px;animation:pulse-dot 1.4s infinite;
+}
+@keyframes pulse-dot{ 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+.feed-row{
+  background:var(--white);border:2px solid var(--line);border-radius:10px;
+  padding:10px 13px;margin-bottom:8px;font-size:13px;
+}
+.feed-row .fr-top{display:flex;justify-content:space-between;font-weight:700;margin-bottom:3px;}
+.feed-row .fr-meta{color:var(--ink-soft);font-size:12px;}
+.aud-row{
+  background:var(--white);border:2px solid var(--line);border-radius:11px;
+  padding:12px 14px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;
+}
+.aud-row .aud-name{font-weight:700;font-size:14.5px;}
+.aud-row .aud-email{font-size:12px;color:var(--ink-soft);}
+.aud-status{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:20px;}
+.aud-status.ativo{background:var(--ok-bg);color:var(--grass-deep);}
+.aud-status.bloqueado{background:var(--alert-bg);color:var(--alert);}
 .sub-tab.active{ border-color:var(--hide); color:var(--hide-dark); background:#fbf1e4; }
 
 /* ---------- checklist de pendentes (conferência) ---------- */
@@ -378,7 +426,6 @@ body.login-mode #app{background:var(--ink);}
 
       <div class="cta-main">
         <div class="lbl">Contagem de rebanho</div>
-        <h2>Iniciar auditoria</h2>
         <button class="btn btn-primary" id="btn-start-wizard">▶ Iniciar auditoria</button>
       </div>
 
@@ -471,8 +518,25 @@ body.login-mode #app{background:var(--ink);}
       </div>
 
       <div id="conf-conferidos-view" class="hide">
-        <p class="page-sub" style="margin-top:-6px;">Animais já liberados — não aparecem mais em Pendentes.</p>
+        <p class="page-sub" style="margin-top:-6px;">Animais já liberados — não aparecem mais em Pendentes. Toque em um animal pra editar só o destino.</p>
+        <div class="search-bar">
+          <input type="text" id="search-conferidos" placeholder="Buscar por ID ou Ordem...">
+        </div>
         <div id="conf-conferidos-list"></div>
+      </div>
+
+      <!-- editar só o destino de um animal já conferido -->
+      <div id="conf-edit-destino-card" class="hide review-card" style="margin-bottom:16px;">
+        <div class="review-row"><span class="k">Animal</span><span class="v" id="ced-animal-lbl">—</span></div>
+        <div class="field" style="padding:12px 0 14px;">
+          <label>Destino</label>
+          <input type="text" id="ced-destino-input" placeholder="Ex: Pasto 14">
+          <div id="ced-chips" class="chip-row"></div>
+        </div>
+        <div class="btn-row" style="padding-bottom:14px;">
+          <button class="btn btn-secondary" id="ced-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="ced-save">Salvar destino</button>
+        </div>
       </div>
 
       <div id="conf-historico-view" class="hide">
@@ -508,15 +572,102 @@ body.login-mode #app{background:var(--ink);}
     </div>
   </div>
 
+  <!-- ============ ADMIN ============ -->
+  <div id="screen-admin" class="screen hide">
+    <div class="topbar">
+      <div class="brand"><span class="tag"></span>Painel Admin</div>
+      <button class="iconbtn" id="btn-admin-logout">Sair</button>
+    </div>
+    <div class="screen" style="padding-top:0;">
+      <div class="btn-row" style="margin-bottom:16px; flex-wrap:wrap;">
+        <button class="btn btn-secondary sub-tab active" id="atab-visao">Visão geral</button>
+        <button class="btn btn-secondary sub-tab" id="atab-auditores">Auditores</button>
+        <button class="btn btn-secondary sub-tab" id="atab-operacao">Adicionar operação</button>
+      </div>
+
+      <!-- VISÃO GERAL -->
+      <div id="admin-visao-view">
+        <div class="field">
+          <label>Ver por</label>
+          <select id="admin-scope-type">
+            <option value="fazenda">Fazenda específica</option>
+            <option value="grupo">Grupo de fazendas</option>
+          </select>
+        </div>
+        <div class="field" id="admin-scope-fazenda-field">
+          <label>Fazenda</label>
+          <select id="admin-scope-fazenda"></select>
+        </div>
+        <div class="field hide" id="admin-scope-grupo-field">
+          <label>Grupo</label>
+          <select id="admin-scope-grupo"></select>
+        </div>
+        <div class="review-card" id="admin-scope-info" style="margin-bottom:16px;"></div>
+        <div class="field hide" id="admin-grupo-assign-field">
+          <label>Atribuir essa fazenda a um grupo</label>
+          <input type="text" id="admin-grupo-nome" placeholder="Ex: Grupo Ademicon Norte">
+        </div>
+        <button class="btn btn-secondary hide" id="btn-salvar-grupo" style="margin-bottom:16px;">Salvar grupo</button>
+
+        <div class="grid2" style="margin-bottom:6px;">
+          <div class="stat-card"><div class="num" id="admin-stat-total">0</div><div class="lbl">Total auditado</div></div>
+          <div class="stat-card"><div class="num" id="admin-stat-pendente">0</div><div class="lbl">Aguard. liberação</div></div>
+        </div>
+
+        <div class="section-title" style="margin-top:14px;">Por categoria e raça</div>
+        <div class="chart-box"><canvas id="chart-categoria"></canvas></div>
+
+        <div class="section-title" style="margin-top:16px;">Por sexo</div>
+        <div class="chart-box"><canvas id="chart-sexo"></canvas></div>
+
+        <div class="section-title" style="margin-top:16px;">Diagnóstico gestacional</div>
+        <div class="chart-box"><canvas id="chart-dg"></canvas></div>
+
+        <div class="section-title" style="margin-top:16px;">Atividade em tempo real <span class="live-dot"></span></div>
+        <div id="admin-feed"></div>
+      </div>
+
+      <!-- AUDITORES -->
+      <div id="admin-auditores-view" class="hide">
+        <div class="section-title">Cadastrar novo auditor</div>
+        <div class="field"><label>Nome</label><input type="text" id="aud-nome" placeholder="Nome do auditor"></div>
+        <div class="field"><label>E-mail</label><input type="email" id="aud-email" placeholder="email@exemplo.com"></div>
+        <div class="field"><label>Senha</label><input type="text" id="aud-senha" placeholder="Mínimo 6 caracteres"></div>
+        <button class="btn btn-primary" id="btn-add-auditor" style="margin-bottom:20px;">+ Cadastrar auditor</button>
+
+        <div class="section-title">Auditores cadastrados</div>
+        <div id="auditores-list"></div>
+      </div>
+
+      <!-- ADICIONAR OPERAÇÃO -->
+      <div id="admin-operacao-view" class="hide">
+        <p class="page-sub" style="margin-top:-6px;">Importe uma planilha de animais já auditados de uma fazenda/retiro pra compilar no sistema. Duplicidade de ID é cruzada automaticamente pelo nome da fazenda.</p>
+        <div class="field"><label>Nome da fazenda</label><input type="text" id="op-fazenda" placeholder="Ex: Fazenda Boa Vista"></div>
+        <div class="field"><label>Retiro (opcional)</label><input type="text" id="op-retiro" placeholder="Ex: Retiro Sede"></div>
+        <div class="field"><label>Auditor responsável</label><input type="text" id="op-auditor" placeholder="Nome do auditor"></div>
+        <div class="field">
+          <label>Planilha (.xlsx)</label>
+          <input type="file" id="op-file" accept=".xlsx,.xls">
+        </div>
+        <button class="btn btn-primary" id="btn-importar-operacao">⬆ Importar planilha</button>
+        <div id="op-result" class="review-card hide" style="margin-top:16px;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ MODAL: FAZENDA ============ -->
   <div id="modal-farm" class="modal-overlay hide">
     <div class="modal-card">
       <h1 class="page-title" style="margin-top:0;">Fazendas</h1>
-      <p class="page-sub">Escolha a fazenda ou cadastre uma nova.</p>
+      <p class="page-sub">Escolha a fazenda ou cadastre uma nova. Se houver mais de um auditor na mesma fazenda ao mesmo tempo, use o mesmo nome de fazenda e diferencie pelo retiro — os dados são cruzados automaticamente pra não duplicar ID.</p>
       <div id="farm-options" class="option-grid" style="margin-bottom:16px;"></div>
       <div class="field">
-        <label>Nova fazenda</label>
-        <input type="text" id="in-newfarm" placeholder="Nome da fazenda">
+        <label>Nome da fazenda</label>
+        <input type="text" id="in-newfarm" placeholder="Ex: Fazenda Boa Vista">
+      </div>
+      <div class="field">
+        <label>Retiro (opcional)</label>
+        <input type="text" id="in-newretiro" placeholder="Ex: Retiro Sede, Retiro do Rio...">
       </div>
       <div class="btn-row">
         <button class="btn btn-secondary" id="btn-farm-close">Fechar</button>
@@ -567,6 +718,7 @@ body.login-mode #app{background:var(--ink);}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 /* ============================================================
    CONFIGURAÇÃO FIREBASE
@@ -583,6 +735,10 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+const ADMIN_EMAIL = "menezesapptec@gmail.com";
+// app secundário: usado só pra criar contas de auditores sem deslogar o admin da sessão principal
+const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+const secondaryAuth = secondaryApp.auth();
 
 /* ============================================================
    ESTADO
@@ -646,6 +802,31 @@ function findPastoForPeso(peso){
   const r = rules.find(r => peso >= Number(r.min) && peso <= Number(r.max));
   return (r && r.pasto && r.pasto.trim()) ? r.pasto.trim() : null;
 }
+async function registrarDestinoExtra(nome){
+  if(!currentFarm || !nome) return;
+  try{
+    const extras = Array.from(new Set([...(currentFarm.destinosExtras||[]), nome]));
+    await db.collection('fazendas').doc(currentFarm.id).update({ destinosExtras: extras });
+    currentFarm.destinosExtras = extras;
+    const idx = farms.findIndex(f=>f.id===currentFarm.id);
+    if(idx>-1) farms[idx].destinosExtras = extras;
+  } catch(e){ console.error(e); }
+}
+async function registrarDestinoManual(peso, nome){
+  if(!currentFarm || !nome) return;
+  try{
+    const rules = getPastoRules().slice();
+    if(!rules.some(r=>r.pasto===nome)){
+      rules.push({ min:Number(peso)||0, max:Number(peso)||0, pasto:nome });
+    }
+    const extras = Array.from(new Set([...(currentFarm.destinosExtras||[]), nome]));
+    await db.collection('fazendas').doc(currentFarm.id).update({ pastoRules: rules, destinosExtras: extras });
+    currentFarm.pastoRules = rules;
+    currentFarm.destinosExtras = extras;
+    const idx = farms.findIndex(f=>f.id===currentFarm.id);
+    if(idx>-1){ farms[idx].pastoRules = rules; farms[idx].destinosExtras = extras; }
+  } catch(e){ console.error(e); }
+}
 
 /* Definição dos passos do wizard */
 function buildSteps(){
@@ -670,12 +851,16 @@ function todayISO(){
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 }
+function nextOrdemForDate(dataISO){
+  const doDia = animals.filter(a => (a.dataTrabalho || a.mes) === dataISO);
+  return doDia.length ? Math.max(...doDia.map(a=>Number(a.ordem)||0)) + 1 : 1;
+}
 
 function newWizard(){
   wiz = {
     steps: buildSteps(),
     idx: 0,
-    data: { ordem:"", idAntigo:"", id:"", peso:"", pasto:"", idadeMeses:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", paridade:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
+    data: { ordem:"", idAntigo:"", id:"", peso:"", pasto:"", pastoManual:"", idadeMeses:"", mesNasc:"", anoNasc:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", paridade:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
     editingId: null,
     blockReason: null
   };
@@ -693,7 +878,7 @@ function toast(msg){
   setTimeout(()=>t.classList.add('hide'), 2200);
 }
 function goScreen(name){
-  ['login','home','list','wizard','config','conferencia'].forEach(s=>hide('screen-'+s));
+  ['login','home','list','wizard','config','conferencia','admin'].forEach(s=>hide('screen-'+s));
   show('screen-'+name);
   document.body.classList.toggle('login-mode', name==='login');
 }
@@ -707,6 +892,11 @@ document.getElementById('btn-login').addEventListener('click', async ()=>{
   const errEl = document.getElementById('login-err');
   errEl.classList.add('hide');
   if(!email || !pass){ errEl.textContent="Preencha e-mail e senha."; errEl.classList.remove('hide'); return; }
+  if(signupMode && email.toLowerCase() !== ADMIN_EMAIL){
+    errEl.textContent = "Novas contas só podem ser criadas pelo administrador.";
+    errEl.classList.remove('hide');
+    return;
+  }
   setLoading(true);
   try{
     if(signupMode){
@@ -739,15 +929,38 @@ function traduzErro(code){
   return map[code] || 'Erro ao entrar. Tente novamente.';
 }
 
+let isAdmin = false;
+
 auth.onAuthStateChanged(async (user)=>{
   if(user){
     currentUser = user;
+    if(user.email && user.email.toLowerCase() === ADMIN_EMAIL){
+      isAdmin = true;
+      goScreen('admin');
+      await renderAdmin();
+      return;
+    }
+    isAdmin = false;
+    // checa se essa conta foi cadastrada pelo admin e está ativa
+    let liberado = false;
+    try{
+      const doc = await db.collection('auditores').doc(user.uid).get();
+      liberado = doc.exists && doc.data().ativo === true;
+    }catch(e){ console.error(e); }
+    if(!liberado){
+      const errEl = document.getElementById('login-err');
+      errEl.textContent = "Acesso bloqueado. Fale com o administrador.";
+      errEl.classList.remove('hide');
+      await auth.signOut();
+      return;
+    }
     await loadFarms();
     goScreen('home');
     renderHome();
     if(farms.length === 0) openFarmModal();
   } else {
     currentUser = null;
+    isAdmin = false;
     goScreen('login');
   }
 });
@@ -767,23 +980,43 @@ async function loadFarms(){
     } else if(!currentFarm){
       currentFarm = farms[0];
     }
-    document.getElementById('farm-picker-name').textContent = currentFarm ? currentFarm.nome : "Cadastrar fazenda";
+    document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Cadastrar fazenda";
     if(currentFarm) await loadAnimals();
   } finally { setLoading(false); }
 }
 
 document.getElementById('farm-picker').addEventListener('click', openFarmModal);
 document.getElementById('btn-farm-close').addEventListener('click', ()=> hide('modal-farm'));
+function slugifyFarmName(nome){
+  return nome.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+}
 document.getElementById('btn-farm-add').addEventListener('click', async ()=>{
   const nome = document.getElementById('in-newfarm').value.trim();
+  const retiro = document.getElementById('in-newretiro').value.trim();
   if(!nome){ toast("Digite o nome da fazenda."); return; }
   setLoading(true);
   try{
-    const ref = await db.collection('fazendas').add({ uid: currentUser.uid, nome, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-    currentFarm = { id: ref.id, nome };
+    const farmGroupKey = slugifyFarmName(nome);
+    const nomeCompleto = retiro ? `${nome} — ${retiro}` : nome;
+    const ref = await db.collection('fazendas').add({
+      uid: currentUser.uid,
+      nome,
+      retiro: retiro || "",
+      nomeCompleto,
+      farmGroupKey,
+      grupo: "",
+      auditorEmail: currentUser.email,
+      auditorNome: currentUser.email.split('@')[0],
+      destinosExtras: [],
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    currentFarm = { id: ref.id, nome, retiro, nomeCompleto, farmGroupKey, grupo:"", destinosExtras:[] };
     farms.push(currentFarm);
     document.getElementById('in-newfarm').value = "";
-    document.getElementById('farm-picker-name').textContent = currentFarm.nome;
+    document.getElementById('in-newretiro').value = "";
+    document.getElementById('farm-picker-name').textContent = currentFarm.nomeCompleto;
     await loadAnimals();
     renderHome();
     hide('modal-farm');
@@ -797,12 +1030,12 @@ function openFarmModal(){
   } else {
     wrap.innerHTML = farms.map(f => `
       <div class="opt-card ${currentFarm && currentFarm.id===f.id ? 'sel':''}" data-id="${f.id}">
-        <span>${f.nome}</span><span class="chk"></span>
+        <span>${f.nomeCompleto || f.nome}</span><span class="chk"></span>
       </div>`).join("");
     wrap.querySelectorAll('.opt-card').forEach(card=>{
       card.addEventListener('click', async ()=>{
         currentFarm = farms.find(f=>f.id===card.dataset.id);
-        document.getElementById('farm-picker-name').textContent = currentFarm.nome;
+        document.getElementById('farm-picker-name').textContent = currentFarm.nomeCompleto || currentFarm.nome;
         await loadAnimals();
         renderHome();
         hide('modal-farm');
@@ -825,7 +1058,7 @@ async function loadAnimals(){
 }
 
 function renderHome(){
-  document.getElementById('farm-picker-name').textContent = currentFarm ? currentFarm.nome : "Cadastrar fazenda";
+  document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Cadastrar fazenda";
   document.getElementById('stat-total').textContent = animals.length;
   document.getElementById('stat-pendente').textContent = animals.filter(a=>!a.confirmado).length;
 
@@ -921,7 +1154,7 @@ function pendentesPorPasto(){
   const pend = animals.filter(a=> !a.confirmado);
   const groups = {};
   pend.forEach(a=>{
-    const p = a.pasto || "Sem pasto definido";
+    const p = a.pasto || "Sem destino definido";
     groups[p] = (groups[p]||0) + 1;
   });
   return { pend, groups };
@@ -952,7 +1185,7 @@ function renderPendenteChecklist(){
   }
   const groups = {};
   pend.forEach(a=>{
-    const p = a.pasto || "Sem pasto definido";
+    const p = a.pasto || "Sem destino definido";
     (groups[p] = groups[p] || []).push(a);
   });
   wrap.innerHTML = Object.entries(groups).map(([pasto, list])=>{
@@ -1021,20 +1254,70 @@ function renderLotesHistorico(){
 
 function renderConferidosView(){
   const wrap = document.getElementById('conf-conferidos-list');
-  const list = animals.filter(a=>a.confirmado).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+  const q = (document.getElementById('search-conferidos').value || "").trim().toLowerCase();
+  let list = animals.filter(a=>a.confirmado);
+  if(q){
+    list = list.filter(a =>
+      String(a.id||"").toLowerCase().includes(q) ||
+      String(a.ordem||"").toLowerCase().includes(q) ||
+      String(a.idAntigo||"").toLowerCase().includes(q)
+    );
+  }
+  list = list.sort((a,b)=>(a.ordem||0)-(b.ordem||0));
   if(!list.length){
-    wrap.innerHTML = `<div class="empty-state">Nenhum animal conferido ainda.</div>`;
+    wrap.innerHTML = `<div class="empty-state">Nenhum animal encontrado.</div>`;
     return;
   }
   wrap.innerHTML = list.map(a=>`
-    <div class="animal-row" style="cursor:default;">
+    <div class="animal-row" data-id="${a.docId}">
       <div class="id-block">
         <div class="tagid">#${a.ordem} · ID ${a.id}</div>
         <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} · ${formatDataBR(a.dataTrabalho)}</div>
       </div>
       <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
     </div>`).join("");
+  wrap.querySelectorAll('.animal-row').forEach(row=>{
+    row.addEventListener('click', ()=> openEditDestino(row.dataset.id));
+  });
 }
+document.getElementById('search-conferidos').addEventListener('input', renderConferidosView);
+
+function openEditDestino(docId){
+  const a = animals.find(x=>x.docId===docId);
+  if(!a) return;
+  document.getElementById('conf-edit-destino-card').classList.remove('hide');
+  document.getElementById('conf-edit-destino-card').dataset.editingId = docId;
+  document.getElementById('ced-animal-lbl').textContent = `#${a.ordem} · ID ${a.id}`;
+  document.getElementById('ced-destino-input').value = a.pasto || "";
+  const chipsWrap = document.getElementById('ced-chips');
+  const conhecidos = getDestinosConhecidos();
+  chipsWrap.innerHTML = conhecidos.length ? conhecidos.map(d=>`<button type="button" class="chip" data-d="${d}">${d}</button>`).join("") : "";
+  chipsWrap.querySelectorAll('.chip').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ document.getElementById('ced-destino-input').value = btn.dataset.d; });
+  });
+  document.getElementById('conf-edit-destino-card').scrollIntoView({behavior:'smooth', block:'start'});
+}
+document.getElementById('ced-cancel').addEventListener('click', ()=>{
+  document.getElementById('conf-edit-destino-card').classList.add('hide');
+});
+document.getElementById('ced-save').addEventListener('click', async ()=>{
+  const docId = document.getElementById('conf-edit-destino-card').dataset.editingId;
+  const novoDestino = document.getElementById('ced-destino-input').value.trim();
+  if(!docId) return;
+  setLoading(true);
+  try{
+    await db.collection('animais').doc(docId).update({ pasto: novoDestino });
+    if(novoDestino) await registrarDestinoExtra(novoDestino);
+    toast("Destino atualizado.");
+    document.getElementById('conf-edit-destino-card').classList.add('hide');
+    await loadAnimals();
+    renderConferidosView();
+    renderHome();
+  } catch(e){
+    console.error(e);
+    toast("Erro ao atualizar destino.");
+  } finally { setLoading(false); }
+});
 
 function switchConfSubtab(which){
   document.getElementById('conf-pendente-view').classList.toggle('hide', which!=='pendente');
@@ -1064,7 +1347,7 @@ async function renderConferencia(){
 document.getElementById('btn-confirmar-lote').addEventListener('click', async ()=>{
   const pend = animals.filter(a=> selectedPendIds.has(a.docId));
   const groups = {};
-  pend.forEach(a=>{ const p = a.pasto || "Sem pasto definido"; groups[p] = (groups[p]||0)+1; });
+  pend.forEach(a=>{ const p = a.pasto || "Sem destino definido"; groups[p] = (groups[p]||0)+1; });
   if(pend.length === 0){ toast("Selecione pelo menos um animal pra esse lote."); return; }
   const p1 = document.getElementById('in-conf1').value.trim();
   const p2 = document.getElementById('in-conf2').value.trim();
@@ -1182,6 +1465,7 @@ function exportRows(){
     "Apartação": a.apartacao || faixaApartacao(a.peso),
     "Pasto": a.pasto||"",
     "Idade (meses)": a.idadeMeses!==undefined && a.idadeMeses!=="" ? a.idadeMeses : "",
+    "Nascimento (mês/ano)": (a.mesNasc && a.anoNasc) ? `${a.mesNasc}/${a.anoNasc}` : "",
     "Raça": a.raca,
     "Categoria": a.categoria,
     "Sexo": a.sexo,
@@ -1261,7 +1545,7 @@ function openAnimalForEdit(docId){
   newWizard();
   wiz.editingId = docId;
   wiz.data = {
-    ordem:a.ordem, idAntigo:a.idAntigo||"", id:a.id, peso:a.peso, pasto:a.pasto||"", idadeMeses: (a.idadeMeses!==undefined?a.idadeMeses:""), raca:a.raca,
+    ordem:a.ordem, idAntigo:a.idAntigo||"", id:a.id, peso:a.peso, pasto:a.pasto||"", pastoManual:"", idadeMeses: (a.idadeMeses!==undefined?a.idadeMeses:""), mesNasc:a.mesNasc||"", anoNasc:a.anoNasc||"", raca:a.raca,
     categoria:a.categoria, sexo:a.sexo, dg:a.dg||"", idadeGestacional:a.idadeGestacional||"", paridade:a.paridade||"",
     dataTrabalho:a.dataTrabalho || a.mes || todayISO(), obs:a.obs||""
   };
@@ -1285,8 +1569,7 @@ document.getElementById('btn-modal-confirm').addEventListener('click', ()=>{
   sessionWorkDate = v;
   hide('modal-start');
   newWizard();
-  const nextOrdem = animals.length ? Math.max(...animals.map(a=>Number(a.ordem)||0)) + 1 : 1;
-  wiz.data.ordem = nextOrdem;
+  wiz.data.ordem = nextOrdemForDate(sessionWorkDate);
   goScreen('wizard');
   renderWizard();
 });
@@ -1329,7 +1612,7 @@ function renderWizard(){
   // foca automaticamente o primeiro campo digitável do passo (não mexe em option-grid: Raça/Categoria/DG continuam por clique)
   // Passos sem campo de texto/número (ex: Observações) ficam sem nada em foco, pra Enter avançar direto.
   setTimeout(()=>{
-    const firstField = content.querySelector('input:not([type=checkbox])');
+    const firstField = content.querySelector('input:not([type=checkbox]), select');
     if(firstField){
       firstField.focus();
       if(firstField.select && firstField.type !== 'date' && firstField.type !== 'month') firstField.select();
@@ -1412,14 +1695,14 @@ document.addEventListener('keydown', (e)=>{
 const OPTION_STEP_LISTS = {
   raca: () => RACAS,
   categoria: () => CATEGORIAS,
-  dg: () => DG_OPCOES.filter(o => o !== "Não se aplica")
+  dg: () => DG_OPCOES
 };
 function selectOptionByNumber(stepKey, value){
   const selectorMap = { raca:'#opt-raca', categoria:'#opt-cat', dg:'#opt-dg' };
   const card = document.querySelector(`${selectorMap[stepKey]} .opt-card[data-v="${value}"]`);
   if(!card) return;
   card.click(); // reaproveita a lógica de seleção já existente (define wiz.data, foca, etc)
-  const semCampoExtra = (stepKey !== 'dg') || value === 'Vazia';
+  const semCampoExtra = (stepKey !== 'dg') || value === 'Vazia' || value === 'Não se aplica';
   if(semCampoExtra){
     const btn = document.getElementById('btn-wiz-next');
     if(btn && !btn.disabled) btn.click();
@@ -1447,7 +1730,10 @@ function validateStep(key){
     case 'ordem': return (d.ordem===""||d.ordem===null||isNaN(d.ordem)) ? "Informe o número de ordem." : null;
     case 'id': return !d.id.trim() ? "Informe o ID do animal." : null;
     case 'peso': return (!d.peso || isNaN(d.peso) || Number(d.peso)<=0) ? "Informe um peso válido." : null;
-    case 'idade': return (d.idadeMeses===""||isNaN(d.idadeMeses)||Number(d.idadeMeses)<0) ? "Informe a idade em meses." : null;
+    case 'idade':
+      if(!d.mesNasc || !d.anoNasc) return "Informe o mês e o ano de nascimento.";
+      if(d.idadeMeses===""||isNaN(d.idadeMeses)||Number(d.idadeMeses)<0) return "Data de nascimento inválida.";
+      return null;
     case 'raca': return !d.raca ? "Selecione a raça." : null;
     case 'categoria': return !d.categoria ? "Selecione a categoria." : null;
     case 'dg':
@@ -1467,14 +1753,13 @@ function stepWrap(title, sub, innerHtml){
 }
 
 function renderStepOrdem(){
-  const el = stepWrap("Ordem", "Número sequencial da passagem no tronco/curral.",
-    `<div class="big-num-wrap"><input type="number" id="in-ordem" value="${wiz.data.ordem}" inputmode="numeric"></div>
+  const el = stepWrap("Ordem", "Número sequencial da passagem no tronco/curral — gerado automaticamente, reinicia a cada novo dia.",
+    `<div class="locked-num">${wiz.data.ordem}<span class="lock-tag">🔒 travado</span></div>
      <div class="field" style="margin-top:14px;">
        <label>ID antigo (opcional)</label>
        <input type="text" id="in-idantigo" value="${wiz.data.idAntigo}" placeholder="Se o animal já teve outra identificação">
      </div>`);
   setTimeout(()=>{
-    document.getElementById('in-ordem').addEventListener('input', e=> wiz.data.ordem = e.target.value ? Number(e.target.value) : "");
     document.getElementById('in-idantigo').addEventListener('input', e=> wiz.data.idAntigo = e.target.value);
   });
   return el;
@@ -1487,6 +1772,12 @@ function renderStepId(){
   return el;
 }
 
+function getDestinosConhecidos(){
+  const fromRules = getPastoRules().map(r=>r.pasto).filter(Boolean);
+  const extras = (currentFarm && Array.isArray(currentFarm.destinosExtras)) ? currentFarm.destinosExtras : [];
+  return Array.from(new Set([...fromRules, ...extras]));
+}
+
 function renderStepPeso(){
   const el = stepWrap("Peso", "Peso atual do animal na balança.",
     `<div class="big-num-wrap">
@@ -1494,32 +1785,104 @@ function renderStepPeso(){
        <span class="suffix">kg</span>
      </div>
      <div class="apart-hint" id="apart-hint">Faixa de apartação: —</div>
-     <div class="pasto-hint hide" id="pasto-hint"></div>`);
+     <div class="pasto-hint hide" id="pasto-hint"></div>
+     <div class="field" style="margin-top:14px;">
+       <label>Outro destino (opcional)</label>
+       <input type="text" id="in-outro-destino" value="${wiz.data.pastoManual||''}" placeholder="Escreva se não for nenhum dos configurados">
+     </div>
+     <div id="destino-chips" class="chip-row"></div>`);
+
+  const renderChips = ()=>{
+    const wrap = document.getElementById('destino-chips');
+    const conhecidos = getDestinosConhecidos();
+    if(!conhecidos.length){ wrap.innerHTML = ""; return; }
+    wrap.innerHTML = `<div class="chip-lbl">Segunda escolha:</div>` + conhecidos.map(d=>`<button type="button" class="chip" data-d="${d}">${d}</button>`).join("");
+    wrap.querySelectorAll('.chip').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        document.getElementById('in-outro-destino').value = btn.dataset.d;
+        upd();
+      });
+    });
+  };
+
   const upd = ()=>{
     const p = Number(document.getElementById('in-peso').value);
     document.getElementById('apart-hint').textContent = "Faixa de apartação: " + (p ? faixaApartacao(p) + " kg" : "—");
     const pastoEl = document.getElementById('pasto-hint');
-    if(p){
+    const manual = document.getElementById('in-outro-destino').value.trim();
+    if(manual){
+      wiz.data.pasto = manual;
+      wiz.data.pastoManual = manual;
+      pastoEl.textContent = `📍 Vai para: ${manual} (destino manual)`;
+      pastoEl.classList.remove('hide');
+    } else if(p){
       const pasto = findPastoForPeso(p);
       wiz.data.pasto = pasto || "";
+      wiz.data.pastoManual = "";
       if(pasto){ pastoEl.textContent = `📍 Vai para: ${pasto}`; pastoEl.classList.remove('hide'); }
-      else { pastoEl.textContent = `Nenhum pasto configurado pra essa faixa — ajuste em Configurações.`; pastoEl.classList.remove('hide'); }
+      else { pastoEl.textContent = `Nenhum destino configurado pra essa faixa — escreva em "Outro destino" ou ajuste em Configurações.`; pastoEl.classList.remove('hide'); }
     } else {
       wiz.data.pasto = "";
+      wiz.data.pastoManual = "";
       pastoEl.classList.add('hide');
     }
   };
   setTimeout(()=>{
     document.getElementById('in-peso').addEventListener('input', e=>{ wiz.data.peso = e.target.value ? Number(e.target.value) : ""; upd(); });
+    document.getElementById('in-outro-destino').addEventListener('input', upd);
+    renderChips();
     upd();
   });
   return el;
 }
 
+function calcIdadeMeses(mes, ano){
+  if(!mes || !ano) return "";
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear(), mesAtual = hoje.getMonth()+1;
+  const meses = (anoAtual - Number(ano)) * 12 + (mesAtual - Number(mes));
+  return meses >= 0 ? meses : "";
+}
 function renderStepIdade(){
-  const el = stepWrap("Idade", "Idade estimada do animal, em meses.",
-    `<div class="big-num-wrap"><input type="number" id="in-idade" value="${wiz.data.idadeMeses}" inputmode="numeric"><span class="suffix">meses</span></div>`);
-  setTimeout(()=> document.getElementById('in-idade').addEventListener('input', e=> wiz.data.idadeMeses = e.target.value ? Number(e.target.value) : ""));
+  const el = stepWrap("Idade", "Mês e ano de nascimento — a idade atual é calculada automaticamente.",
+    `<div class="field">
+       <label>Mês de nascimento</label>
+       <select id="in-mes-nasc">
+         <option value="">Selecione</option>
+         ${["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map((m,i)=>`<option value="${i+1}" ${Number(wiz.data.mesNasc)===i+1?'selected':''}>${m}</option>`).join("")}
+       </select>
+     </div>
+     <div class="field hide" id="ano-nasc-field">
+       <label>Ano de nascimento</label>
+       <input type="number" id="in-ano-nasc" value="${wiz.data.anoNasc||''}" inputmode="numeric" placeholder="Ex: 2023">
+     </div>
+     <div class="apart-hint hide" id="idade-calc-hint"></div>`);
+  const anoField = ()=> document.getElementById('ano-nasc-field');
+  const upd = ()=>{
+    const mes = document.getElementById('in-mes-nasc').value;
+    const ano = document.getElementById('in-ano-nasc').value;
+    wiz.data.mesNasc = mes ? Number(mes) : "";
+    wiz.data.anoNasc = ano ? Number(ano) : "";
+    anoField().classList.toggle('hide', !mes);
+    const hint = document.getElementById('idade-calc-hint');
+    if(mes && ano){
+      const idade = calcIdadeMeses(mes, ano);
+      wiz.data.idadeMeses = idade;
+      hint.textContent = idade!=="" ? `Idade atual: ${idade} meses (≈ ${(idade/12).toFixed(1)} anos)` : "Data inválida";
+      hint.classList.remove('hide');
+    } else {
+      wiz.data.idadeMeses = "";
+      hint.classList.add('hide');
+    }
+  };
+  setTimeout(()=>{
+    document.getElementById('in-mes-nasc').addEventListener('change', ()=>{
+      upd();
+      if(document.getElementById('in-mes-nasc').value) document.getElementById('in-ano-nasc').focus();
+    });
+    document.getElementById('in-ano-nasc').addEventListener('input', upd);
+    upd();
+  });
   return el;
 }
 
@@ -1563,7 +1926,7 @@ function renderStepCategoria(){
 }
 
 function renderStepDG(){
-  const opts = DG_OPCOES.filter(o=>o!=="Não se aplica");
+  const opts = DG_OPCOES;
   const el = stepWrap("Diagnóstico gestacional", "",
     `<div class="option-grid" id="opt-dg">
       ${opts.map((o,i)=>`<div class="opt-card ${wiz.data.dg===o?'sel':''}" data-v="${o}" tabindex="0"><span class="opt-label"><span class="opt-num">${i+1}</span>${o}</span><span class="chk"></span></div>`).join("")}
@@ -1634,24 +1997,29 @@ function renderStepObs(){
 function renderStepRevisar(){
   const d = wiz.data;
   const rows = [
-    ["Ordem", d.ordem], ["ID antigo", d.idAntigo||"—"], ["ID", d.id],
-    ["Peso", d.peso+" kg ("+faixaApartacao(Number(d.peso))+")"],
-    ["Pasto", d.pasto || "—"],
-    ["Idade", d.idadeMeses!=="" ? d.idadeMeses+" meses" : "—"],
-    ["Raça", d.raca], ["Categoria", d.categoria], ["Sexo", d.sexo],
-    ["DG", d.dg], 
+    { k:"Ordem", v:d.ordem, step:"ordem" },
+    { k:"ID antigo", v:d.idAntigo||"—", step:"ordem" },
+    { k:"ID", v:d.id, step:"id" },
+    { k:"Peso", v:d.peso+" kg ("+faixaApartacao(Number(d.peso))+")", step:"peso" },
+    { k:"Destino", v:d.pasto || "—", step:"peso" },
+    { k:"Idade", v:d.idadeMeses!=="" ? `${d.idadeMeses} meses (nasc. ${d.mesNasc}/${d.anoNasc})` : "—", step:"idade" },
+    { k:"Raça", v:d.raca, step:"raca" },
+    { k:"Categoria", v:d.categoria, step:"categoria" },
+    { k:"Sexo", v:d.sexo, step:"categoria" },
+    { k:"DG", v:d.dg, step:"dg" },
   ];
   if(d.dg==="Prenhe IATF"||d.dg==="Prenhe Touro"){
-    rows.push(["Idade gestacional", (d.idadeGestacional||"—")+" meses"]);
-    rows.push(["Paridade", d.paridade||"—"]);
+    rows.push({ k:"Idade gestacional", v:(d.idadeGestacional||"—")+" meses", step:"dg" });
+    rows.push({ k:"Paridade", v:d.paridade||"—", step:"dg" });
   }
-  rows.push(["Data", formatDataBR(d.dataTrabalho)], ["Obs", d.obs||"—"]);
+  rows.push({ k:"Data", v:formatDataBR(d.dataTrabalho), step:null });
+  rows.push({ k:"Obs", v:d.obs||"—", step:"obs" });
 
   const el = document.createElement('div');
-  el.innerHTML = `<h1 class="page-title">Revisar</h1><p class="page-sub">Confira os dados antes de salvar.</p>
+  el.innerHTML = `<h1 class="page-title">Revisar</h1><p class="page-sub">Confira os dados. Toque em qualquer linha pra corrigir aquele campo.</p>
     <div id="dup-banner"></div>
     <div class="review-card">
-      ${rows.map(([k,v])=>`<div class="review-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}
+      ${rows.map(r=>`<div class="review-row ${r.step?'editable':''}" ${r.step?`data-step="${r.step}"`:''}><span class="k">${r.k}</span><span class="v">${r.v}${r.step?' <span class="edit">editar ✎</span>':''}</span></div>`).join("")}
     </div>
     <div id="step-err" class="err-msg"></div>
     ${wiz.editingId ? '<button class="btn btn-ghost" id="btn-delete-animal" style="color:var(--alert);margin-top:6px;">🗑 Excluir este cadastro</button>' : ''}`;
@@ -1667,12 +2035,20 @@ function renderStepRevisar(){
       document.getElementById('btn-wiz-next').removeAttribute('disabled');
     }
   });
-  if(wiz.editingId){
-    setTimeout(()=>{
+  setTimeout(()=>{
+    el.querySelectorAll('.review-row.editable').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        const stepKey = row.dataset.step;
+        const steps = activeSteps();
+        const idx = steps.findIndex(s=>s.key===stepKey);
+        if(idx>-1){ wiz.idx = idx; renderWizard(); }
+      });
+    });
+    if(wiz.editingId){
       const delBtn = document.getElementById('btn-delete-animal');
       if(delBtn) delBtn.addEventListener('click', excluirAnimalAtual);
-    });
-  }
+    }
+  });
   return el;
 }
 
@@ -1689,10 +2065,11 @@ async function excluirAnimalAtual(){
 
 async function findDuplicate(field, value){
   if(!currentFarm || value===""||value===null||value===undefined) return null;
-  const snap = await db.collection('animais')
-    .where('fazendaId','==',currentFarm.id)
-    .where(field,'==', value)
-    .limit(1).get();
+  const key = currentFarm.farmGroupKey || currentFarm.id; // compatibilidade com fazendas antigas sem farmGroupKey
+  const q = currentFarm.farmGroupKey
+    ? db.collection('animais').where('farmGroupKey','==',key).where(field,'==', value)
+    : db.collection('animais').where('fazendaId','==',currentFarm.id).where(field,'==', value);
+  const snap = await q.limit(1).get();
   if(snap.empty) return null;
   const doc = snap.docs[0];
   if(doc.id === wiz.editingId) return null;
@@ -1717,12 +2094,20 @@ async function salvarAnimal(){
   const d = wiz.data;
   const payload = {
     fazendaId: currentFarm.id,
+    farmGroupKey: currentFarm.farmGroupKey || "",
+    fazendaNome: currentFarm.nome || "",
+    retiro: currentFarm.retiro || "",
+    grupo: currentFarm.grupo || "",
+    auditorEmail: currentUser.email,
+    auditorNome: (currentFarm.auditorNome) || currentUser.email.split('@')[0],
     ordem: Number(d.ordem),
     idAntigo: d.idAntigo || "",
     id: String(d.id),
     peso: Number(d.peso),
     pasto: d.pasto || "",
     idadeMeses: d.idadeMeses===""? "" : Number(d.idadeMeses),
+    mesNasc: d.mesNasc || "",
+    anoNasc: d.anoNasc || "",
     raca: d.raca,
     categoria: d.categoria,
     sexo: d.sexo,
@@ -1737,6 +2122,7 @@ async function salvarAnimal(){
   };
   setLoading(true);
   try{
+    if(wiz.data.pastoManual){ await registrarDestinoManual(d.peso, wiz.data.pastoManual); }
     if(wiz.editingId){
       await db.collection('animais').doc(wiz.editingId).update(payload);
       toast("Animal atualizado.");
@@ -1751,10 +2137,9 @@ async function salvarAnimal(){
     if(wiz.editingId){
       goScreen('list'); renderList();
     } else {
-      // segue no fluxo: prepara próximo cadastro com ordem+1
-      const nextOrdem = Math.max(...animals.map(a=>Number(a.ordem)||0), Number(d.ordem)) + 1;
+      // segue no fluxo: prepara próximo cadastro com a próxima ordem do dia
       newWizard();
-      wiz.data.ordem = nextOrdem;
+      wiz.data.ordem = nextOrdemForDate(sessionWorkDate || todayISO());
       renderWizard();
     }
     renderHome();
@@ -1763,6 +2148,362 @@ async function salvarAnimal(){
     toast("Erro ao salvar. Tente novamente.");
   } finally { setLoading(false); }
 }
+
+/* ============================================================
+   PAINEL ADMIN
+   ============================================================ */
+let adminFazendas = [];       // todas as fazendas/retiros do sistema
+let adminScopeKeys = [];      // farmGroupKeys atualmente selecionados (1 fazenda ou várias de um grupo)
+let adminFeedUnsub = null;    // unsubscribe do listener em tempo real
+let charts = { categoria:null, sexo:null, dg:null };
+
+document.getElementById('btn-admin-logout').addEventListener('click', ()=>{
+  if(adminFeedUnsub) adminFeedUnsub();
+  auth.signOut();
+});
+
+function switchAdminTab(which){
+  document.getElementById('admin-visao-view').classList.toggle('hide', which!=='visao');
+  document.getElementById('admin-auditores-view').classList.toggle('hide', which!=='auditores');
+  document.getElementById('admin-operacao-view').classList.toggle('hide', which!=='operacao');
+  document.getElementById('atab-visao').classList.toggle('active', which==='visao');
+  document.getElementById('atab-auditores').classList.toggle('active', which==='auditores');
+  document.getElementById('atab-operacao').classList.toggle('active', which==='operacao');
+}
+document.getElementById('atab-visao').addEventListener('click', ()=> switchAdminTab('visao'));
+document.getElementById('atab-auditores').addEventListener('click', ()=>{ switchAdminTab('auditores'); renderAuditoresList(); });
+document.getElementById('atab-operacao').addEventListener('click', ()=> switchAdminTab('operacao'));
+
+async function renderAdmin(){
+  switchAdminTab('visao');
+  setLoading(true);
+  try{
+    const snap = await db.collection('fazendas').get();
+    adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  } catch(e){ console.error(e); adminFazendas = []; }
+  finally { setLoading(false); }
+
+  // popula seletor de fazendas (uma por farmGroupKey, agrupando retiros)
+  const porGrupo = {};
+  adminFazendas.forEach(f=>{
+    const key = f.farmGroupKey || f.id;
+    if(!porGrupo[key]) porGrupo[key] = { nome: f.nome, key, retiros: [] };
+    porGrupo[key].retiros.push(f);
+  });
+  const listaFazendas = Object.values(porGrupo).sort((a,b)=>a.nome.localeCompare(b.nome));
+  const selFazenda = document.getElementById('admin-scope-fazenda');
+  selFazenda.innerHTML = listaFazendas.length
+    ? listaFazendas.map(f=>`<option value="${f.key}">${f.nome} (${f.retiros.length} retiro${f.retiros.length>1?'s':''})</option>`).join("")
+    : `<option value="">Nenhuma fazenda cadastrada ainda</option>`;
+
+  // popula seletor de grupos (grupos distintos já atribuídos)
+  const grupos = Array.from(new Set(adminFazendas.map(f=>f.grupo).filter(Boolean))).sort();
+  const selGrupo = document.getElementById('admin-scope-grupo');
+  selGrupo.innerHTML = grupos.length
+    ? grupos.map(g=>`<option value="${g}">${g}</option>`).join("")
+    : `<option value="">Nenhum grupo criado ainda</option>`;
+
+  await applyAdminScope();
+  renderAuditoresList();
+}
+
+document.getElementById('admin-scope-type').addEventListener('change', (e)=>{
+  const isGrupo = e.target.value === 'grupo';
+  document.getElementById('admin-scope-fazenda-field').classList.toggle('hide', isGrupo);
+  document.getElementById('admin-scope-grupo-field').classList.toggle('hide', !isGrupo);
+  applyAdminScope();
+});
+document.getElementById('admin-scope-fazenda').addEventListener('change', applyAdminScope);
+document.getElementById('admin-scope-grupo').addEventListener('change', applyAdminScope);
+
+async function applyAdminScope(){
+  const tipo = document.getElementById('admin-scope-type').value;
+  const infoEl = document.getElementById('admin-scope-info');
+  const grupoField = document.getElementById('admin-grupo-assign-field');
+  const grupoBtn = document.getElementById('btn-salvar-grupo');
+  if(tipo === 'fazenda'){
+    const key = document.getElementById('admin-scope-fazenda').value;
+    adminScopeKeys = key ? [key] : [];
+    const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===key);
+    infoEl.innerHTML = retiros.length
+      ? retiros.map(r=>`<div class="review-row"><span class="k">${r.retiro || 'Sede'}</span><span class="v">${r.auditorNome||r.auditorEmail||'—'}</span></div>`).join("")
+      : `<div class="review-row"><span class="k">—</span><span class="v">Selecione uma fazenda</span></div>`;
+    if(key){
+      grupoField.classList.remove('hide');
+      grupoBtn.classList.remove('hide');
+      document.getElementById('admin-grupo-nome').value = (retiros[0] && retiros[0].grupo) || "";
+    } else {
+      grupoField.classList.add('hide');
+      grupoBtn.classList.add('hide');
+    }
+  } else {
+    grupoField.classList.add('hide');
+    grupoBtn.classList.add('hide');
+    const grupo = document.getElementById('admin-scope-grupo').value;
+    const membros = adminFazendas.filter(f=>f.grupo===grupo);
+    adminScopeKeys = Array.from(new Set(membros.map(f=>f.farmGroupKey||f.id)));
+    infoEl.innerHTML = membros.length
+      ? membros.map(r=>`<div class="review-row"><span class="k">${r.nome}${r.retiro?' — '+r.retiro:''}</span><span class="v">${r.auditorNome||r.auditorEmail||'—'}</span></div>`).join("")
+      : `<div class="review-row"><span class="k">—</span><span class="v">Selecione um grupo</span></div>`;
+  }
+  await loadAdminScopedAnimals();
+}
+
+document.getElementById('btn-salvar-grupo').addEventListener('click', async ()=>{
+  const key = document.getElementById('admin-scope-fazenda').value;
+  const grupo = document.getElementById('admin-grupo-nome').value.trim();
+  if(!key){ toast("Selecione uma fazenda primeiro."); return; }
+  setLoading(true);
+  try{
+    const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===key);
+    const batch = db.batch();
+    retiros.forEach(r=>{
+      batch.update(db.collection('fazendas').doc(r.id), { grupo });
+      r.grupo = grupo; // atualiza cache local
+    });
+    await batch.commit();
+    toast(grupo ? `Fazenda atribuída ao grupo "${grupo}".` : "Fazenda removida do grupo.");
+    // repopula o seletor de grupos com a lista atualizada
+    const grupos = Array.from(new Set(adminFazendas.map(f=>f.grupo).filter(Boolean))).sort();
+    document.getElementById('admin-scope-grupo').innerHTML = grupos.length
+      ? grupos.map(g=>`<option value="${g}">${g}</option>`).join("")
+      : `<option value="">Nenhum grupo criado ainda</option>`;
+  } catch(e){
+    console.error(e);
+    toast("Erro ao salvar grupo.");
+  } finally { setLoading(false); }
+});
+
+async function loadAdminScopedAnimals(){
+  if(adminFeedUnsub){ adminFeedUnsub(); adminFeedUnsub = null; }
+  if(!adminScopeKeys.length){
+    renderAdminCharts([]);
+    document.getElementById('admin-feed').innerHTML = `<div class="empty-state">Nenhum escopo selecionado.</div>`;
+    return;
+  }
+  setLoading(true);
+  try{
+    // Firestore 'in' aceita até 10 valores — cobre o uso normal (fazenda única ou grupo pequeno)
+    const keys = adminScopeKeys.slice(0,10);
+    const query = db.collection('animais').where('farmGroupKey','in', keys);
+    adminFeedUnsub = query.onSnapshot(snap=>{
+      const lista = snap.docs.map(d=>({ docId:d.id, ...d.data() }));
+      renderAdminCharts(lista);
+      renderAdminFeed(lista);
+    }, err=>{ console.error(err); });
+  } finally { setLoading(false); }
+}
+
+function renderAdminCharts(lista){
+  document.getElementById('admin-stat-total').textContent = lista.length;
+  document.getElementById('admin-stat-pendente').textContent = lista.filter(a=>!a.confirmado).length;
+
+  const catCombos = {};
+  lista.forEach(a=>{
+    const k = `${a.categoria||'—'} ${a.raca||''}`.trim();
+    catCombos[k] = (catCombos[k]||0)+1;
+  });
+  drawPie('chart-categoria', charts, 'categoria', Object.keys(catCombos), Object.values(catCombos));
+
+  const sexoCombos = { "Macho":0, "Fêmea":0 };
+  lista.forEach(a=>{ if(sexoCombos[a.sexo]!==undefined) sexoCombos[a.sexo]++; });
+  drawPie('chart-sexo', charts, 'sexo', Object.keys(sexoCombos), Object.values(sexoCombos));
+
+  const dgCombos = {};
+  lista.forEach(a=>{
+    const k = a.dg || "—";
+    dgCombos[k] = (dgCombos[k]||0)+1;
+  });
+  drawPie('chart-dg', charts, 'dg', Object.keys(dgCombos), Object.values(dgCombos));
+}
+
+const PIE_COLORS = ['#b9793f','#4f6e46','#2c5a86','#a9382f','#e2b64f','#7a5c9e','#3a5233','#96622f','#5c8ca8'];
+function drawPie(canvasId, store, key, labels, data){
+  const ctx = document.getElementById(canvasId);
+  if(!ctx) return;
+  if(store[key]) store[key].destroy();
+  store[key] = new Chart(ctx, {
+    type: 'pie',
+    data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } }
+    }
+  });
+}
+
+function renderAdminFeed(lista){
+  const wrap = document.getElementById('admin-feed');
+  const ordenado = lista.slice().sort((a,b)=>{
+    const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+    const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+    return tb - ta;
+  }).slice(0, 40);
+  if(!ordenado.length){ wrap.innerHTML = `<div class="empty-state">Nenhum animal auditado ainda nesse escopo.</div>`; return; }
+  wrap.innerHTML = ordenado.map(a=>{
+    const hora = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : "—";
+    return `<div class="feed-row">
+      <div class="fr-top"><span>#${a.ordem} · ID ${a.id} — ${a.categoria||'—'} ${a.raca||''}</span><span>${a.peso||'—'} kg</span></div>
+      <div class="fr-meta">${a.fazendaNome||''}${a.retiro?' — '+a.retiro:''} · ${a.auditorNome||a.auditorEmail||'—'} · ${formatDataBR(a.dataTrabalho)} ${hora}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ---- auditores ---- */
+async function renderAuditoresList(){
+  const wrap = document.getElementById('auditores-list');
+  setLoading(true);
+  let docs = [];
+  try{
+    const snap = await db.collection('auditores').get();
+    docs = snap.docs.map(d=>({ uid:d.id, ...d.data() }));
+  } catch(e){ console.error(e); } finally { setLoading(false); }
+  if(!docs.length){ wrap.innerHTML = `<div class="empty-state">Nenhum auditor cadastrado ainda.</div>`; return; }
+  wrap.innerHTML = docs.map(a=>`
+    <div class="aud-row">
+      <div>
+        <div class="aud-name">${a.nome||'—'}</div>
+        <div class="aud-email">${a.email||''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="aud-status ${a.ativo?'ativo':'bloqueado'}">${a.ativo?'Ativo':'Bloqueado'}</span>
+        <button class="btn btn-secondary" style="padding:8px 12px;" data-uid="${a.uid}">${a.ativo?'Bloquear':'Desbloquear'}</button>
+      </div>
+    </div>`).join("");
+  wrap.querySelectorAll('button[data-uid]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const uid = btn.dataset.uid;
+      const doc = docs.find(d=>d.uid===uid);
+      setLoading(true);
+      try{
+        await db.collection('auditores').doc(uid).update({ ativo: !doc.ativo });
+        toast(doc.ativo ? "Auditor bloqueado." : "Auditor desbloqueado.");
+        renderAuditoresList();
+      } catch(e){ console.error(e); toast("Erro ao atualizar auditor."); }
+      finally { setLoading(false); }
+    });
+  });
+}
+
+document.getElementById('btn-add-auditor').addEventListener('click', async ()=>{
+  const nome = document.getElementById('aud-nome').value.trim();
+  const email = document.getElementById('aud-email').value.trim();
+  const senha = document.getElementById('aud-senha').value;
+  if(!nome || !email || !senha){ toast("Preencha nome, e-mail e senha."); return; }
+  if(senha.length < 6){ toast("Senha precisa ter pelo menos 6 caracteres."); return; }
+  setLoading(true);
+  try{
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, senha);
+    const newUid = cred.user.uid;
+    await db.collection('auditores').doc(newUid).set({
+      nome, email, ativo: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser.uid
+    });
+    await secondaryAuth.signOut();
+    document.getElementById('aud-nome').value = "";
+    document.getElementById('aud-email').value = "";
+    document.getElementById('aud-senha').value = "";
+    toast("Auditor cadastrado com sucesso.");
+    renderAuditoresList();
+  } catch(e){
+    console.error(e);
+    toast(traduzErro(e.code));
+  } finally { setLoading(false); }
+});
+
+/* ---- adicionar operação (importar planilha) ---- */
+document.getElementById('btn-importar-operacao').addEventListener('click', async ()=>{
+  const fazenda = document.getElementById('op-fazenda').value.trim();
+  const retiro = document.getElementById('op-retiro').value.trim();
+  const auditorNome = document.getElementById('op-auditor').value.trim();
+  const fileInput = document.getElementById('op-file');
+  const resultEl = document.getElementById('op-result');
+  if(!fazenda){ toast("Informe o nome da fazenda."); return; }
+  if(!fileInput.files.length){ toast("Selecione uma planilha .xlsx."); return; }
+
+  setLoading(true);
+  try{
+    const file = fileInput.files[0];
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval:"" });
+
+    const farmGroupKey = slugifyFarmName(fazenda);
+    // garante que existe um doc de fazenda/retiro pra essa operação
+    let fazendaDoc = adminFazendas.find(f=>(f.farmGroupKey||f.id)===farmGroupKey && (f.retiro||"")===retiro);
+    let fazendaId;
+    if(fazendaDoc){
+      fazendaId = fazendaDoc.id;
+    } else {
+      const nomeCompleto = retiro ? `${fazenda} — ${retiro}` : fazenda;
+      const ref = await db.collection('fazendas').add({
+        uid: currentUser.uid, nome: fazenda, retiro: retiro||"", nomeCompleto, farmGroupKey,
+        grupo: "", auditorEmail: currentUser.email, auditorNome: auditorNome || "Importação",
+        destinosExtras: [], createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      fazendaId = ref.id;
+      adminFazendas.push({ id:fazendaId, uid:currentUser.uid, nome:fazenda, retiro, nomeCompleto, farmGroupKey, grupo:"" });
+    }
+
+    let importados = 0, duplicados = 0, semId = 0;
+    const BATCH_MAX = 400;
+    let batch = db.batch();
+    let opsNoBatch = 0;
+
+    for(const row of rows){
+      const idAnimal = String(row["ID"] || row["id"] || "").trim();
+      if(!idAnimal){ semId++; continue; }
+      const dupSnap = await db.collection('animais').where('farmGroupKey','==',farmGroupKey).where('id','==',idAnimal).limit(1).get();
+      if(!dupSnap.empty){ duplicados++; continue; }
+
+      const ref = db.collection('animais').doc();
+      batch.set(ref, {
+        fazendaId, farmGroupKey, fazendaNome: fazenda, retiro: retiro||"", grupo:"",
+        auditorEmail: currentUser.email, auditorNome: auditorNome || "Importação",
+        ordem: Number(row["Ordem"]) || 0,
+        idAntigo: String(row["ID Antigo"] || ""),
+        id: idAnimal,
+        peso: Number(row["Peso (Kg)"] || row["Peso"] || 0),
+        apartacao: String(row["Apartação"] || ""),
+        pasto: String(row["Pasto"] || row["Destino"] || ""),
+        idadeMeses: row["Idade (meses)"] !== "" ? Number(row["Idade (meses)"]) : "",
+        raca: String(row["Raça"] || ""),
+        categoria: String(row["Categoria"] || ""),
+        sexo: String(row["Sexo"] || ""),
+        dg: String(row["DG"] || "Não se aplica"),
+        idadeGestacional: row["Idade Gestacional (meses)"] || "",
+        paridade: String(row["Paridade"] || ""),
+        dataTrabalho: String(row["Data"] || todayISO()),
+        obs: String(row["Obs"] || ""),
+        confirmado: true,
+        loteId: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        importado: true
+      });
+      opsNoBatch++;
+      importados++;
+      if(opsNoBatch >= BATCH_MAX){
+        await batch.commit();
+        batch = db.batch();
+        opsNoBatch = 0;
+      }
+    }
+    if(opsNoBatch > 0) await batch.commit();
+
+    resultEl.classList.remove('hide');
+    resultEl.innerHTML = `
+      <div class="review-row"><span class="k">Importados</span><span class="v">${importados}</span></div>
+      <div class="review-row"><span class="k">Duplicados (ignorados)</span><span class="v">${duplicados}</span></div>
+      <div class="review-row"><span class="k">Sem ID (ignorados)</span><span class="v">${semId}</span></div>`;
+    toast(`Operação importada: ${importados} animais.`);
+    fileInput.value = "";
+  } catch(e){
+    console.error(e);
+    toast("Erro ao importar a planilha.");
+  } finally { setLoading(false); }
+});
 </script>
 </body>
 </html>
