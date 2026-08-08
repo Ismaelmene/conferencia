@@ -592,7 +592,8 @@ body.login-mode #app{background:var(--ink);}
           <label>Fazenda</label>
           <select id="admin-scope-fazenda"></select>
         </div>
-        <div class="review-card" id="admin-scope-info" style="margin-bottom:16px;"></div>
+        <div class="section-title" style="margin-top:4px;">Retiros (marque um ou mais)</div>
+        <div id="admin-scope-info"></div>
 
         <div class="grid2" style="margin-bottom:6px;">
           <div class="stat-card"><div class="num" id="admin-stat-total">0</div><div class="lbl">Total auditado</div></div>
@@ -617,7 +618,6 @@ body.login-mode #app{background:var(--ink);}
         <div class="section-title">Cadastrar fazenda / retiro</div>
         <div class="field"><label>Nome da fazenda</label><input type="text" id="fz-nome" placeholder="Ex: Fazenda Boa Vista"></div>
         <div class="field"><label>Retiro (opcional)</label><input type="text" id="fz-retiro" placeholder="Ex: Retiro Sede, Retiro do Rio..."></div>
-        <div class="field"><label>Grupo (opcional)</label><input type="text" id="fz-grupo" placeholder="Ex: Grupo Ademicon Norte"></div>
         <button class="btn btn-primary" id="btn-add-fazenda" style="margin-bottom:20px;">+ Cadastrar fazenda</button>
 
         <div class="section-title">Fazendas cadastradas</div>
@@ -1625,7 +1625,7 @@ document.getElementById('btn-wiz-next').addEventListener('click', async ()=>{
       const dup = await findDuplicate('idAntigo', String(wiz.data.idAntigo));
       setLoading(false);
       if(dup){
-        if(errEl()) errEl().textContent = `⚠ Já existe um animal com ID Antigo ${wiz.data.idAntigo} cadastrado (Ordem ${dup.ordem}). Esse número não pode repetir. Corrija pra continuar.`;
+        if(errEl()) errEl().textContent = `⚠ Já existe um animal com ID Antigo ${wiz.data.idAntigo} ${descreverDuplicata(dup)}. Esse número não pode repetir. Corrija pra continuar.`;
         return;
       }
     }
@@ -1634,7 +1634,7 @@ document.getElementById('btn-wiz-next').addEventListener('click', async ()=>{
       const dup = await findDuplicate('id', String(wiz.data.id));
       setLoading(false);
       if(dup){
-        if(errEl()) errEl().textContent = `⚠ Já existe um animal com ID ${wiz.data.id} cadastrado (Ordem ${dup.ordem}, ${formatDataBR(dup.dataTrabalho)}). Esse ID é único e não pode repetir. Corrija pra continuar.`;
+        if(errEl()) errEl().textContent = `⚠ Já existe um animal com ID ${wiz.data.id} ${descreverDuplicata(dup)}. Esse ID é único e não pode repetir. Corrija pra continuar.`;
         return;
       }
     }
@@ -2004,7 +2004,7 @@ function renderStepRevisar(){
   checkDuplicates().then(dup=>{
     const banner = el.querySelector('#dup-banner');
     if(dup){
-      wiz.blockReason = `Já existe um animal com ${dup.label} ${dup.value} cadastrado (Ordem ${dup.animal.ordem}, ${formatDataBR(dup.animal.dataTrabalho)}).`;
+      wiz.blockReason = `Já existe um animal com ${dup.label} ${dup.value} ${descreverDuplicata(dup.animal)}.`;
       banner.innerHTML = `<div class="block-banner">⚠ Cadastro bloqueado — ${wiz.blockReason}</div>`;
       document.getElementById('btn-wiz-next').setAttribute('disabled','disabled');
     } else {
@@ -2041,6 +2041,10 @@ async function excluirAnimalAtual(){
   } finally { setLoading(false); }
 }
 
+function descreverDuplicata(dup){
+  const retiro = dup.retiro ? `no retiro "${dup.retiro}"` : "na sede (sem retiro)";
+  return `cadastrado em ${formatDataBR(dup.dataTrabalho)}, ${retiro} (Ordem ${dup.ordem})`;
+}
 async function findDuplicate(field, value){
   if(!currentFarm || value===""||value===null||value===undefined) return null;
   const key = currentFarm.farmGroupKey || currentFarm.id; // compatibilidade com fazendas antigas sem farmGroupKey
@@ -2075,7 +2079,6 @@ async function salvarAnimal(){
     farmGroupKey: currentFarm.farmGroupKey || "",
     fazendaNome: currentFarm.nome || "",
     retiro: currentFarm.retiro || "",
-    grupo: currentFarm.grupo || "",
     auditorEmail: currentUser.email,
     auditorNome: currentAuditorNome || currentUser.email.split('@')[0],
     ordem: Number(d.ordem),
@@ -2131,7 +2134,9 @@ async function salvarAnimal(){
    PAINEL ADMIN
    ============================================================ */
 let adminFazendas = [];       // todas as fazendas/retiros do sistema
-let adminScopeKeys = [];      // farmGroupKeys atualmente selecionados (1 fazenda ou várias de um grupo)
+let adminScopeKey = "";       // farmGroupKey da fazenda selecionada
+let selectedRetiros = new Set(); // retiros marcados na checklist
+let adminAllAnimals = [];     // cache de todos os animais da fazenda selecionada (todos os retiros)
 let adminFeedUnsub = null;    // unsubscribe do listener em tempo real
 let charts = { categoria:null, sexo:null, dg:null };
 
@@ -2184,32 +2189,64 @@ async function renderAdmin(){
 document.getElementById('admin-scope-fazenda').addEventListener('change', applyAdminScope);
 
 async function applyAdminScope(){
-  const infoEl = document.getElementById('admin-scope-info');
-  const key = document.getElementById('admin-scope-fazenda').value;
-  adminScopeKeys = key ? [key] : [];
-  const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===key);
-  infoEl.innerHTML = retiros.length
-    ? retiros.map(r=>`<div class="review-row"><span class="k">${r.retiro || 'Sede'}${r.grupo?' · 🏷 '+r.grupo:''}</span><span class="v">${r.auditorNome||r.auditorEmail||'—'}</span></div>`).join("")
-    : `<div class="review-row"><span class="k">—</span><span class="v">Selecione uma fazenda</span></div>`;
+  adminScopeKey = document.getElementById('admin-scope-fazenda').value;
+  // ao trocar de fazenda, seleciona todos os retiros dela por padrão
+  const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===adminScopeKey);
+  selectedRetiros = new Set(retiros.map(r=> r.retiro || 'Sede'));
   await loadAdminScopedAnimals();
+}
+
+function renderRetiroChecklist(){
+  const wrap = document.getElementById('admin-scope-info');
+  if(!adminScopeKey){
+    wrap.innerHTML = `<div class="empty-state" style="padding:16px 10px;">Selecione uma fazenda.</div>`;
+    return;
+  }
+  const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===adminScopeKey);
+  if(!retiros.length){
+    wrap.innerHTML = `<div class="empty-state" style="padding:16px 10px;">Essa fazenda ainda não tem retiros.</div>`;
+    return;
+  }
+  wrap.innerHTML = retiros.map(r=>{
+    const nomeRetiro = r.retiro || 'Sede';
+    const auditoresAqui = Array.from(new Set(adminAllAnimals.filter(a=>(a.retiro||'Sede')===nomeRetiro).map(a=>a.auditorNome).filter(Boolean)));
+    const auditorTxt = auditoresAqui.length ? auditoresAqui.join(', ') : 'sem auditoria ainda';
+    const checked = selectedRetiros.has(nomeRetiro) ? 'checked' : '';
+    return `<label class="pend-item" style="font-family:'Inter';background:var(--white);border:2px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+      <input type="checkbox" class="retiro-check" data-retiro="${nomeRetiro}" ${checked}>
+      <span style="flex:1;"><strong>${nomeRetiro}</strong><br><span style="font-size:12px;color:var(--ink-soft);">${auditorTxt}</span></span>
+    </label>`;
+  }).join("");
+  wrap.querySelectorAll('.retiro-check').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(cb.checked) selectedRetiros.add(cb.dataset.retiro); else selectedRetiros.delete(cb.dataset.retiro);
+      applyRetiroFilterAndRender();
+    });
+  });
+}
+
+function applyRetiroFilterAndRender(){
+  const filtrada = adminAllAnimals.filter(a => selectedRetiros.has(a.retiro || 'Sede'));
+  renderAdminCharts(filtrada);
+  renderAdminFeed(filtrada);
 }
 
 async function loadAdminScopedAnimals(){
   if(adminFeedUnsub){ adminFeedUnsub(); adminFeedUnsub = null; }
-  if(!adminScopeKeys.length){
+  renderRetiroChecklist();
+  if(!adminScopeKey){
+    adminAllAnimals = [];
     renderAdminCharts([]);
-    document.getElementById('admin-feed').innerHTML = `<div class="empty-state">Nenhum escopo selecionado.</div>`;
+    document.getElementById('admin-feed').innerHTML = `<div class="empty-state">Nenhuma fazenda selecionada.</div>`;
     return;
   }
   setLoading(true);
   try{
-    // Firestore 'in' aceita até 10 valores — cobre o uso normal (fazenda única ou grupo pequeno)
-    const keys = adminScopeKeys.slice(0,10);
-    const query = db.collection('animais').where('farmGroupKey','in', keys);
+    const query = db.collection('animais').where('farmGroupKey','==', adminScopeKey);
     adminFeedUnsub = query.onSnapshot(snap=>{
-      const lista = snap.docs.map(d=>({ docId:d.id, ...d.data() }));
-      renderAdminCharts(lista);
-      renderAdminFeed(lista);
+      adminAllAnimals = snap.docs.map(d=>({ docId:d.id, ...d.data() }));
+      renderRetiroChecklist();
+      applyRetiroFilterAndRender();
     }, err=>{ console.error(err); });
   } finally { setLoading(false); }
 }
@@ -2312,7 +2349,7 @@ async function renderAdminFazendasList(){
   const porNome = {};
   adminFazendas.forEach(f=>{
     const key = f.farmGroupKey || f.nome;
-    if(!porNome[key]) porNome[key] = { nome:f.nome, key, grupo:f.grupo||"", retiros:[] };
+    if(!porNome[key]) porNome[key] = { nome:f.nome, key, retiros:[] };
     porNome[key].retiros.push(f);
   });
   wrap.innerHTML = Object.values(porNome).sort((a,b)=>a.nome.localeCompare(b.nome)).map(grupo => `
@@ -2327,13 +2364,6 @@ async function renderAdminFazendasList(){
         <div class="chip-row" style="margin-top:0;">
           <input type="text" class="add-retiro-input" placeholder="Novo retiro" style="flex:1;min-width:140px;padding:9px 11px;font-size:13px;border:2px solid var(--line);border-radius:8px;">
           <button type="button" class="btn btn-secondary add-retiro-btn" style="padding:9px 14px;flex:none;">+ Retiro</button>
-        </div>
-      </div>
-      <div class="field" style="padding-top:6px;">
-        <label>Grupo</label>
-        <div class="chip-row" style="margin-top:0;">
-          <input type="text" class="edit-grupo-input" value="${grupo.grupo}" placeholder="Ex: Grupo Ademicon Norte" style="flex:1;min-width:140px;padding:9px 11px;font-size:13px;border:2px solid var(--line);border-radius:8px;">
-          <button type="button" class="btn btn-secondary save-grupo-btn" style="padding:9px 14px;flex:none;">Salvar</button>
         </div>
       </div>
     </div>`).join("");
@@ -2358,12 +2388,11 @@ async function renderAdminFazendasList(){
       if(!retiro){ toast("Digite o nome do retiro."); return; }
       const nome = card.dataset.nome;
       const farmGroupKey = card.dataset.key;
-      const grupoAtual = card.querySelector('.edit-grupo-input').value.trim();
       setLoading(true);
       try{
         await db.collection('fazendas').add({
           uid: currentUser.uid, nome, retiro, nomeCompleto: `${nome} — ${retiro}`,
-          farmGroupKey, grupo: grupoAtual||"", auditorEmail:"", auditorNome:"",
+          farmGroupKey, auditorEmail:"", auditorNome:"",
           destinosExtras: [], createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         toast("Retiro adicionado.");
@@ -2372,28 +2401,10 @@ async function renderAdminFazendasList(){
       finally { setLoading(false); }
     });
   });
-  wrap.querySelectorAll('.save-grupo-btn').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const card = btn.closest('.review-card');
-      const grupo = card.querySelector('.edit-grupo-input').value.trim();
-      const key = card.dataset.key;
-      const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.nome)===key);
-      setLoading(true);
-      try{
-        const batch = db.batch();
-        retiros.forEach(r=> batch.update(db.collection('fazendas').doc(r.id), { grupo }));
-        await batch.commit();
-        toast("Grupo atualizado.");
-        renderAdminFazendasList();
-      } catch(e){ console.error(e); toast("Erro ao salvar grupo."); }
-      finally { setLoading(false); }
-    });
-  });
 }
 document.getElementById('btn-add-fazenda').addEventListener('click', async ()=>{
   const nome = document.getElementById('fz-nome').value.trim();
   const retiro = document.getElementById('fz-retiro').value.trim();
-  const grupo = document.getElementById('fz-grupo').value.trim();
   if(!nome){ toast("Digite o nome da fazenda."); return; }
   setLoading(true);
   try{
@@ -2401,14 +2412,13 @@ document.getElementById('btn-add-fazenda').addEventListener('click', async ()=>{
     const nomeCompleto = retiro ? `${nome} — ${retiro}` : nome;
     await db.collection('fazendas').add({
       uid: currentUser.uid,
-      nome, retiro: retiro||"", nomeCompleto, farmGroupKey, grupo: grupo||"",
+      nome, retiro: retiro||"", nomeCompleto, farmGroupKey,
       auditorEmail: "", auditorNome: "",
       destinosExtras: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     document.getElementById('fz-nome').value = "";
     document.getElementById('fz-retiro').value = "";
-    document.getElementById('fz-grupo').value = "";
     toast("Fazenda cadastrada.");
     renderAdminFazendasList();
   } catch(e){
