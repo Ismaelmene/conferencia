@@ -986,7 +986,18 @@ function updatePendingSyncBadge(){
   if(n > 0){ el.textContent = `⏳ ${n} aguardando sincronizar`; el.classList.remove('hide'); }
   else { el.classList.add('hide'); }
 }
-window.addEventListener('online', ()=>{ toast('✅ Conexão de volta — sincronizando dados.'); flushOutbox(); });
+window.addEventListener('online', async ()=>{
+  toast('✅ Conexão de volta — sincronizando dados.');
+  await flushOutbox();
+  // se a tela do wizard estiver aberta pra essa fazenda, confere na hora se apareceu conflito
+  if(currentFarm && !document.getElementById('screen-wizard').classList.contains('hide')){
+    const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
+    if(abertos.length){
+      goScreen('home'); renderHome();
+      openConflictsModal(abertos);
+    }
+  }
+});
 setInterval(flushOutbox, 30000);
 
 /* ============================================================
@@ -2458,13 +2469,24 @@ async function salvarAnimal(){
 
     // salva na fila local (garante contra queda de energia) e tenta enviar em segundo plano — nunca trava a tela
     addToOutbox(ref.id, payload);
-    ref.set(payload, { merge: true }).then(()=> removeFromOutbox(ref.id)).catch(()=>{ /* fica na fila, tenta de novo depois */ });
+    ref.set(payload, { merge: true }).then(async ()=>{
+      removeFromOutbox(ref.id);
+      await checkForConflict(ref.id, payload);
+    }).catch(()=>{ /* fica na fila, tenta de novo depois */ });
 
     clearDraft();
     if(isEdit){
       goScreen('list'); renderList();
     } else {
-      // segue no fluxo: prepara próximo cadastro com a próxima ordem do dia
+      // segue no fluxo: mas antes confere se surgiu algum conflito de ID nessa fazenda (se online)
+      if(navigator.onLine){
+        const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
+        if(abertos.length){
+          goScreen('home'); renderHome();
+          openConflictsModal(abertos);
+          return;
+        }
+      }
       newWizard();
       wiz.data.ordem = nextOrdemForDate(sessionWorkDate || todayISO());
       renderWizard();
@@ -2971,7 +2993,6 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
    for cadastrado offline sincroniza sozinho quando a conexão volta)
    ============================================================ */
 window.addEventListener('offline', ()=> toast('📡 Sem internet — continuando offline. Sincroniza sozinho quando a conexão voltar.'));
-window.addEventListener('online', ()=> toast('✅ Conexão de volta — sincronizando dados.'));
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
