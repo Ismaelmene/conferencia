@@ -749,6 +749,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// habilita cache offline: os dados já vistos ficam salvos no navegador,
+// e o que for cadastrado sem internet sincroniza sozinho quando a conexão voltar
+db.enablePersistence({ synchronizeTabs: true }).catch(err=>{
+  console.warn('Persistência offline não disponível:', err.code);
+});
 const ADMIN_EMAIL = "menezesapptec@gmail.com";
 // app secundário: usado só pra criar contas de auditores sem deslogar o admin da sessão principal
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
@@ -1005,8 +1010,49 @@ function slugifyFarmName(nome){
 function selectFarm(farm){
   currentFarm = farm;
   document.getElementById('farm-picker-name').textContent = currentFarm.nomeCompleto || currentFarm.nome;
-  loadAnimals().then(()=>{ renderHome(); });
+  loadAnimals().then(()=>{ renderHome(); checkForDraft(); });
   hide('modal-farm');
+}
+
+/* ============================================================
+   RASCUNHO AUTOMÁTICO — protege contra queda de energia / fechar sem querer
+   Salva o progresso do animal sendo cadastrado a cada passo. Se o
+   notebook desligar no meio do preenchimento, ao reabrir e escolher
+   a mesma fazenda, o app oferece continuar de onde parou.
+   ============================================================ */
+function draftKey(farmId){ return `auditaboi_draft_${farmId}`; }
+function saveDraft(){
+  if(!wiz || !currentFarm) return;
+  try{
+    localStorage.setItem(draftKey(currentFarm.id), JSON.stringify({
+      data: wiz.data, idx: wiz.idx, editingId: wiz.editingId, savedAt: Date.now()
+    }));
+  } catch(e){ /* localStorage indisponível (ex: aba anônima) — segue sem rascunho */ }
+}
+function clearDraft(){
+  if(!currentFarm) return;
+  try{ localStorage.removeItem(draftKey(currentFarm.id)); } catch(e){}
+}
+function checkForDraft(){
+  if(!currentFarm) return;
+  try{
+    const raw = localStorage.getItem(draftKey(currentFarm.id));
+    if(!raw) return;
+    const draft = JSON.parse(raw);
+    if(!draft || !draft.data) return;
+    const horasAtras = (Date.now() - (draft.savedAt||0)) / 3600000;
+    if(horasAtras > 24){ clearDraft(); return; }
+    if(confirm(`Encontramos um cadastro não finalizado (ID ${draft.data.id || '—'}, Ordem ${draft.data.ordem || '—'}) — provavelmente por queda de energia ou fechamento inesperado. Quer continuar de onde parou?`)){
+      newWizard();
+      wiz.data = { ...wiz.data, ...draft.data };
+      wiz.idx = draft.idx || 0;
+      wiz.editingId = draft.editingId || null;
+      goScreen('wizard');
+      renderWizard();
+    } else {
+      clearDraft();
+    }
+  } catch(e){ console.warn('Erro ao checar rascunho:', e); }
 }
 function renderFarmSearchResults(){
   const wrap = document.getElementById('farm-options');
@@ -1323,9 +1369,10 @@ document.getElementById('ced-save').addEventListener('click', async ()=>{
   try{
     await db.collection('animais').doc(docId).update({ pasto: novoDestino });
     if(novoDestino) await registrarDestinoExtra(novoDestino);
+    const idx = animals.findIndex(a=>a.docId===docId);
+    if(idx>-1) animals[idx].pasto = novoDestino; // atualiza local, sem reler a coleção
     toast("Destino atualizado.");
     document.getElementById('conf-edit-destino-card').classList.add('hide');
-    await loadAnimals();
     renderPendenteResumo();
     renderPendenteChecklist();
     renderConferidosView();
@@ -1398,7 +1445,7 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', async ()
     await batch.commit();
     toast(`Lote confirmado — ${pend.length} animal(is) liberado(s).`);
     selectedPendIds.clear();
-    await loadAnimals();
+    pend.forEach(a=>{ a.confirmado = true; a.loteId = loteRef.id; }); // atualiza local, sem reler a coleção
     await loadLotes();
     renderPendenteResumo();
     renderPendenteChecklist();
@@ -1592,6 +1639,7 @@ document.getElementById('btn-modal-confirm').addEventListener('click', ()=>{
 });
 document.getElementById('btn-wiz-close').addEventListener('click', ()=>{
   if(confirm("Sair do cadastro? Os dados não salvos serão perdidos.")){
+    clearDraft();
     goScreen('home'); renderHome();
   }
 });
@@ -1604,6 +1652,7 @@ function renderWizard(){
   const steps = activeSteps();
   if(wiz.idx >= steps.length) wiz.idx = steps.length-1;
   const step = steps[wiz.idx];
+  saveDraft();
 
   // progress tags
   const prog = document.getElementById('wiz-progress');
@@ -2070,8 +2119,8 @@ async function excluirAnimalAtual(){
   setLoading(true);
   try{
     await db.collection('animais').doc(wiz.editingId).delete();
+    animals = animals.filter(a=>a.docId!==wiz.editingId); // atualiza local, sem reler a coleção
     toast("Cadastro excluído.");
-    await loadAnimals();
     goScreen('list'); renderList(); renderHome();
   } finally { setLoading(false); }
 }
@@ -2133,7 +2182,7 @@ async function salvarAnimal(){
     dataTrabalho: d.dataTrabalho,
     obs: d.obs || "",
     apartacao: faixaApartacao(Number(d.peso)),
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebase.firestore.Timestamp.now(),
     updatedBy: currentUser.uid
   };
   setLoading(true);
@@ -2141,15 +2190,18 @@ async function salvarAnimal(){
     if(wiz.data.pastoManual){ await registrarDestinoManual(d.peso, wiz.data.pastoManual); }
     if(wiz.editingId){
       await db.collection('animais').doc(wiz.editingId).update(payload);
+      const idx = animals.findIndex(a=>a.docId===wiz.editingId);
+      if(idx>-1) animals[idx] = { ...animals[idx], ...payload };
       toast("Animal atualizado.");
     } else {
-      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      payload.createdAt = firebase.firestore.Timestamp.now(); // timestamp local — evita reler o documento pra saber a hora
       payload.confirmado = false;
       payload.loteId = null;
-      await db.collection('animais').add(payload);
+      const ref = await db.collection('animais').add(payload);
+      animals.push({ ...payload, docId: ref.id }); // atualiza a lista local sem gastar leitura extra
       toast("Animal cadastrado! Pronto para o próximo.");
     }
-    await loadAnimals();
+    clearDraft();
     if(wiz.editingId){
       goScreen('list'); renderList();
     } else {
@@ -2616,6 +2668,20 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
     toast("Erro ao importar a planilha.");
   } finally { setLoading(false); }
 });
+
+/* ============================================================
+   OFFLINE — avisos de conexão + registro do service worker
+   (o app abre e continua funcionando mesmo sem internet; o que
+   for cadastrado offline sincroniza sozinho quando a conexão volta)
+   ============================================================ */
+window.addEventListener('offline', ()=> toast('📡 Sem internet — continuando offline. Sincroniza sozinho quando a conexão voltar.'));
+window.addEventListener('online', ()=> toast('✅ Conexão de volta — sincronizando dados.'));
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=> console.warn('Service worker não registrado:', err));
+  });
+}
 </script>
 </body>
 </html>
