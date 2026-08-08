@@ -589,26 +589,10 @@ body.login-mode #app{background:var(--ink);}
       <!-- VISÃO GERAL -->
       <div id="admin-visao-view">
         <div class="field">
-          <label>Ver por</label>
-          <select id="admin-scope-type">
-            <option value="fazenda">Fazenda específica</option>
-            <option value="grupo">Grupo de fazendas</option>
-          </select>
-        </div>
-        <div class="field" id="admin-scope-fazenda-field">
           <label>Fazenda</label>
           <select id="admin-scope-fazenda"></select>
         </div>
-        <div class="field hide" id="admin-scope-grupo-field">
-          <label>Grupo</label>
-          <select id="admin-scope-grupo"></select>
-        </div>
         <div class="review-card" id="admin-scope-info" style="margin-bottom:16px;"></div>
-        <div class="field hide" id="admin-grupo-assign-field">
-          <label>Atribuir essa fazenda a um grupo</label>
-          <input type="text" id="admin-grupo-nome" placeholder="Ex: Grupo Ademicon Norte">
-        </div>
-        <button class="btn btn-secondary hide" id="btn-salvar-grupo" style="margin-bottom:16px;">Salvar grupo</button>
 
         <div class="grid2" style="margin-bottom:6px;">
           <div class="stat-card"><div class="num" id="admin-stat-total">0</div><div class="lbl">Total auditado</div></div>
@@ -2193,83 +2177,22 @@ async function renderAdmin(){
     ? listaFazendas.map(f=>`<option value="${f.key}">${f.nome} (${f.retiros.length} retiro${f.retiros.length>1?'s':''})</option>`).join("")
     : `<option value="">Nenhuma fazenda cadastrada ainda</option>`;
 
-  // popula seletor de grupos (grupos distintos já atribuídos)
-  const grupos = Array.from(new Set(adminFazendas.map(f=>f.grupo).filter(Boolean))).sort();
-  const selGrupo = document.getElementById('admin-scope-grupo');
-  selGrupo.innerHTML = grupos.length
-    ? grupos.map(g=>`<option value="${g}">${g}</option>`).join("")
-    : `<option value="">Nenhum grupo criado ainda</option>`;
-
   await applyAdminScope();
   renderAuditoresList();
 }
 
-document.getElementById('admin-scope-type').addEventListener('change', (e)=>{
-  const isGrupo = e.target.value === 'grupo';
-  document.getElementById('admin-scope-fazenda-field').classList.toggle('hide', isGrupo);
-  document.getElementById('admin-scope-grupo-field').classList.toggle('hide', !isGrupo);
-  applyAdminScope();
-});
 document.getElementById('admin-scope-fazenda').addEventListener('change', applyAdminScope);
-document.getElementById('admin-scope-grupo').addEventListener('change', applyAdminScope);
 
 async function applyAdminScope(){
-  const tipo = document.getElementById('admin-scope-type').value;
   const infoEl = document.getElementById('admin-scope-info');
-  const grupoField = document.getElementById('admin-grupo-assign-field');
-  const grupoBtn = document.getElementById('btn-salvar-grupo');
-  if(tipo === 'fazenda'){
-    const key = document.getElementById('admin-scope-fazenda').value;
-    adminScopeKeys = key ? [key] : [];
-    const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===key);
-    infoEl.innerHTML = retiros.length
-      ? retiros.map(r=>`<div class="review-row"><span class="k">${r.retiro || 'Sede'}</span><span class="v">${r.auditorNome||r.auditorEmail||'—'}</span></div>`).join("")
-      : `<div class="review-row"><span class="k">—</span><span class="v">Selecione uma fazenda</span></div>`;
-    if(key){
-      grupoField.classList.remove('hide');
-      grupoBtn.classList.remove('hide');
-      document.getElementById('admin-grupo-nome').value = (retiros[0] && retiros[0].grupo) || "";
-    } else {
-      grupoField.classList.add('hide');
-      grupoBtn.classList.add('hide');
-    }
-  } else {
-    grupoField.classList.add('hide');
-    grupoBtn.classList.add('hide');
-    const grupo = document.getElementById('admin-scope-grupo').value;
-    const membros = adminFazendas.filter(f=>f.grupo===grupo);
-    adminScopeKeys = Array.from(new Set(membros.map(f=>f.farmGroupKey||f.id)));
-    infoEl.innerHTML = membros.length
-      ? membros.map(r=>`<div class="review-row"><span class="k">${r.nome}${r.retiro?' — '+r.retiro:''}</span><span class="v">${r.auditorNome||r.auditorEmail||'—'}</span></div>`).join("")
-      : `<div class="review-row"><span class="k">—</span><span class="v">Selecione um grupo</span></div>`;
-  }
+  const key = document.getElementById('admin-scope-fazenda').value;
+  adminScopeKeys = key ? [key] : [];
+  const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===key);
+  infoEl.innerHTML = retiros.length
+    ? retiros.map(r=>`<div class="review-row"><span class="k">${r.retiro || 'Sede'}${r.grupo?' · 🏷 '+r.grupo:''}</span><span class="v">${r.auditorNome||r.auditorEmail||'—'}</span></div>`).join("")
+    : `<div class="review-row"><span class="k">—</span><span class="v">Selecione uma fazenda</span></div>`;
   await loadAdminScopedAnimals();
 }
-
-document.getElementById('btn-salvar-grupo').addEventListener('click', async ()=>{
-  const key = document.getElementById('admin-scope-fazenda').value;
-  const grupo = document.getElementById('admin-grupo-nome').value.trim();
-  if(!key){ toast("Selecione uma fazenda primeiro."); return; }
-  setLoading(true);
-  try{
-    const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===key);
-    const batch = db.batch();
-    retiros.forEach(r=>{
-      batch.update(db.collection('fazendas').doc(r.id), { grupo });
-      r.grupo = grupo; // atualiza cache local
-    });
-    await batch.commit();
-    toast(grupo ? `Fazenda atribuída ao grupo "${grupo}".` : "Fazenda removida do grupo.");
-    // repopula o seletor de grupos com a lista atualizada
-    const grupos = Array.from(new Set(adminFazendas.map(f=>f.grupo).filter(Boolean))).sort();
-    document.getElementById('admin-scope-grupo').innerHTML = grupos.length
-      ? grupos.map(g=>`<option value="${g}">${g}</option>`).join("")
-      : `<option value="">Nenhum grupo criado ainda</option>`;
-  } catch(e){
-    console.error(e);
-    toast("Erro ao salvar grupo.");
-  } finally { setLoading(false); }
-});
 
 async function loadAdminScopedAnimals(){
   if(adminFeedUnsub){ adminFeedUnsub(); adminFeedUnsub = null; }
@@ -2319,12 +2242,42 @@ function drawPie(canvasId, store, key, labels, data){
   const ctx = document.getElementById(canvasId);
   if(!ctx) return;
   if(store[key]) store[key].destroy();
+  const total = data.reduce((a,b)=>a+b, 0);
   store[key] = new Chart(ctx, {
     type: 'pie',
     data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } }
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            boxWidth: 12, font: { size: 11 },
+            generateLabels: (chart)=>{
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((lbl, i)=>{
+                const val = ds.data[i];
+                const pct = total ? Math.round(100*val/total) : 0;
+                return {
+                  text: `${lbl} — ${val} (${pct}%)`,
+                  fillStyle: ds.backgroundColor[i],
+                  strokeStyle: ds.backgroundColor[i],
+                  index: i
+                };
+              });
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctxItem)=>{
+              const val = ctxItem.parsed;
+              const pct = total ? Math.round(100*val/total) : 0;
+              return `${ctxItem.label}: ${val} (${pct}%)`;
+            }
+          }
+        }
+      }
     }
   });
 }
@@ -2359,14 +2312,83 @@ async function renderAdminFazendasList(){
   const porNome = {};
   adminFazendas.forEach(f=>{
     const key = f.farmGroupKey || f.nome;
-    if(!porNome[key]) porNome[key] = { nome:f.nome, retiros:[] };
+    if(!porNome[key]) porNome[key] = { nome:f.nome, key, grupo:f.grupo||"", retiros:[] };
     porNome[key].retiros.push(f);
   });
   wrap.innerHTML = Object.values(porNome).sort((a,b)=>a.nome.localeCompare(b.nome)).map(grupo => `
-    <div class="review-card" style="margin-bottom:12px;">
-      <div class="review-row"><span class="k" style="font-weight:900;">${grupo.nome}</span><span class="v">${grupo.retiros[0].grupo ? '🏷 '+grupo.retiros[0].grupo : ''}</span></div>
-      ${grupo.retiros.map(r=>`<div class="review-row"><span class="k">${r.retiro||'Sede'}</span><span class="v">${r.auditorNome||'—'}</span></div>`).join("")}
+    <div class="review-card" style="margin-bottom:14px;" data-key="${grupo.key}" data-nome="${grupo.nome}">
+      <div class="review-row"><span class="k" style="font-weight:900;">${grupo.nome}</span></div>
+      ${grupo.retiros.map(r=>`
+        <div class="review-row">
+          <span class="k">${r.retiro||'Sede'} <span style="color:var(--ink-soft);font-weight:500;">· ${r.auditorNome||'sem auditor'}</span></span>
+          <span class="edit del-retiro" data-id="${r.id}">excluir ✕</span>
+        </div>`).join("")}
+      <div class="field" style="padding:12px 0 6px;">
+        <div class="chip-row" style="margin-top:0;">
+          <input type="text" class="add-retiro-input" placeholder="Novo retiro" style="flex:1;min-width:140px;padding:9px 11px;font-size:13px;border:2px solid var(--line);border-radius:8px;">
+          <button type="button" class="btn btn-secondary add-retiro-btn" style="padding:9px 14px;flex:none;">+ Retiro</button>
+        </div>
+      </div>
+      <div class="field" style="padding-top:6px;">
+        <label>Grupo</label>
+        <div class="chip-row" style="margin-top:0;">
+          <input type="text" class="edit-grupo-input" value="${grupo.grupo}" placeholder="Ex: Grupo Ademicon Norte" style="flex:1;min-width:140px;padding:9px 11px;font-size:13px;border:2px solid var(--line);border-radius:8px;">
+          <button type="button" class="btn btn-secondary save-grupo-btn" style="padding:9px 14px;flex:none;">Salvar</button>
+        </div>
+      </div>
     </div>`).join("");
+
+  wrap.querySelectorAll('.del-retiro').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!confirm("Excluir esse retiro? Os animais já auditados nele continuam salvos, só o cadastro do retiro some da lista de seleção.")) return;
+      setLoading(true);
+      try{
+        await db.collection('fazendas').doc(el.dataset.id).delete();
+        toast("Retiro excluído.");
+        renderAdminFazendasList();
+      } catch(e){ console.error(e); toast("Erro ao excluir."); }
+      finally { setLoading(false); }
+    });
+  });
+  wrap.querySelectorAll('.add-retiro-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const card = btn.closest('.review-card');
+      const input = card.querySelector('.add-retiro-input');
+      const retiro = input.value.trim();
+      if(!retiro){ toast("Digite o nome do retiro."); return; }
+      const nome = card.dataset.nome;
+      const farmGroupKey = card.dataset.key;
+      const grupoAtual = card.querySelector('.edit-grupo-input').value.trim();
+      setLoading(true);
+      try{
+        await db.collection('fazendas').add({
+          uid: currentUser.uid, nome, retiro, nomeCompleto: `${nome} — ${retiro}`,
+          farmGroupKey, grupo: grupoAtual||"", auditorEmail:"", auditorNome:"",
+          destinosExtras: [], createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        toast("Retiro adicionado.");
+        renderAdminFazendasList();
+      } catch(e){ console.error(e); toast("Erro ao adicionar retiro."); }
+      finally { setLoading(false); }
+    });
+  });
+  wrap.querySelectorAll('.save-grupo-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const card = btn.closest('.review-card');
+      const grupo = card.querySelector('.edit-grupo-input').value.trim();
+      const key = card.dataset.key;
+      const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.nome)===key);
+      setLoading(true);
+      try{
+        const batch = db.batch();
+        retiros.forEach(r=> batch.update(db.collection('fazendas').doc(r.id), { grupo }));
+        await batch.commit();
+        toast("Grupo atualizado.");
+        renderAdminFazendasList();
+      } catch(e){ console.error(e); toast("Erro ao salvar grupo."); }
+      finally { setLoading(false); }
+    });
+  });
 }
 document.getElementById('btn-add-fazenda').addEventListener('click', async ()=>{
   const nome = document.getElementById('fz-nome').value.trim();
