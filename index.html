@@ -764,7 +764,7 @@ const secondaryAuth = secondaryApp.auth();
    (ex: caiu a internet no curral), devolve um resultado vazio "incerto"
    na hora — nunca fica travado esperando. O cadastro continua normal
    e a checagem real de duplicidade acontece quando sincronizar. */
-function getSafe(ref, timeoutMs=3000){
+function getSafe(ref, timeoutMs=800){
   const EMPTY_UNCERTAIN = { docs: [], empty: true, uncertain: true };
   return Promise.race([
     ref.get().catch(()=> EMPTY_UNCERTAIN),
@@ -2263,7 +2263,7 @@ async function salvarAnimal(){
   };
   setLoading(true);
   try{
-    if(wiz.data.pastoManual){ await raceTimeout(registrarDestinoManual(d.peso, wiz.data.pastoManual), 3000, null); }
+    if(wiz.data.pastoManual){ await raceTimeout(registrarDestinoManual(d.peso, wiz.data.pastoManual), 800, null); }
 
     const isEdit = !!wiz.editingId;
     const ref = isEdit ? db.collection('animais').doc(wiz.editingId) : db.collection('animais').doc();
