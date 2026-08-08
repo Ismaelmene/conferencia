@@ -885,8 +885,8 @@ async function checkForConflict(docId, payload){
         valor,
         animalIds: idsEnvolvidos,
         detalhes: [
-          { docId, ordem: payload.ordem, retiro: payload.retiro||'', auditorNome: payload.auditorNome||'', dataTrabalho: payload.dataTrabalho||'' },
-          { docId: outroDoc.id, ordem: outroData.ordem, retiro: outroData.retiro||'', auditorNome: outroData.auditorNome||'', dataTrabalho: outroData.dataTrabalho||'' }
+          { docId, ordem: payload.ordem, retiro: payload.retiro||'', auditorNome: payload.auditorNome||'', auditorEmail: payload.auditorEmail||'', dataTrabalho: payload.dataTrabalho||'' },
+          { docId: outroDoc.id, ordem: outroData.ordem, retiro: outroData.retiro||'', auditorNome: outroData.auditorNome||'', auditorEmail: outroData.auditorEmail||'', dataTrabalho: outroData.dataTrabalho||'' }
         ],
         status: 'aberto',
         createdAt: firebase.firestore.Timestamp.now(),
@@ -908,11 +908,16 @@ function openConflictsModal(conflitos){
   const wrap = document.getElementById('conflict-list');
   wrap.innerHTML = conflitos.map(c=>{
     const [a,b] = c.detalhes;
+    const souEu = [a,b].some(x => x.auditorEmail === currentUser.email);
+    const outro = [a,b].find(x => x.auditorEmail !== currentUser.email) || {};
     return `<div class="review-card" style="margin-bottom:12px;">
       <div class="review-row"><span class="k">Campo</span><span class="v">${c.campo==='id'?'ID Novo':'ID Antigo'} ${c.valor}</span></div>
       <div class="review-row"><span class="k">Ordem ${a.ordem} · ${a.retiro||'Sede'}</span><span class="v">${a.auditorNome||'—'}</span></div>
       <div class="review-row"><span class="k">Ordem ${b.ordem} · ${b.retiro||'Sede'}</span><span class="v">${b.auditorNome||'—'}</span></div>
-      <button class="btn btn-primary" data-resolve="${c.docId}" style="margin-top:10px;">Corrigir agora</button>
+      ${souEu
+        ? `<button class="btn btn-primary" data-resolve="${c.docId}" style="margin-top:10px;">Corrigir meu cadastro</button>`
+        : `<div class="pasto-hint" style="margin-top:10px;">Aguardando ${outro.auditorNome||'o outro auditor'} corrigir o cadastro dele.</div>`
+      }
     </div>`;
   }).join("");
   wrap.querySelectorAll('[data-resolve]').forEach(btn=>{
@@ -926,17 +931,21 @@ function openConflictsModal(conflitos){
 document.getElementById('btn-conflict-later').addEventListener('click', ()=> hide('modal-conflict'));
 
 let resolvingConflict = null;
+let resolvingMeuIndex = -1;
 function openResolveModal(c){
-  resolvingConflict = c;
   const [a,b] = c.detalhes;
+  const meuIndex = [a,b].findIndex(x => x.auditorEmail === currentUser.email);
+  if(meuIndex === -1){
+    toast("Esse conflito é de outro auditor — só ele pode corrigir o cadastro dele.");
+    return;
+  }
+  resolvingConflict = c;
+  resolvingMeuIndex = meuIndex;
+  const meu = [a,b][meuIndex];
+  const outro = [a,b][1-meuIndex];
   document.getElementById('resolve-conflict-desc').textContent =
-    `O ${c.campo==='id'?'ID Novo':'ID Antigo'} "${c.valor}" foi usado em dois animais ao mesmo tempo (offline). Escolha qual dos dois deve mudar de número.`;
-  const picks = document.getElementById('resolve-conflict-picks');
-  picks.innerHTML = [a,b].map((x,i)=>`
-    <label class="opt-card" style="margin-bottom:10px;display:flex;">
-      <input type="radio" name="resolve-pick" value="${i}" style="width:19px;height:19px;margin-right:10px;" ${i===0?'checked':''}>
-      <span>Ordem ${x.ordem} · ${x.retiro||'Sede'} · ${x.auditorNome||'—'} · ${formatDataBR(x.dataTrabalho)}</span>
-    </label>`).join("");
+    `O ${c.campo==='id'?'ID Novo':'ID Antigo'} "${c.valor}" também foi usado no retiro "${outro.retiro||'Sede'}" (${outro.auditorNome||'outro auditor'}). Você vai corrigir só o SEU cadastro: Ordem ${meu.ordem}, retiro "${meu.retiro||'Sede'}".`;
+  document.getElementById('resolve-conflict-picks').innerHTML = "";
   document.getElementById('resolve-novo-valor').value = "";
   document.getElementById('resolve-explicacao').value = "";
   document.getElementById('resolve-explicacao-field').classList.toggle('hide', c.campo!=='id');
@@ -949,15 +958,14 @@ document.getElementById('btn-resolve-cancel').addEventListener('click', ()=>{
 });
 document.getElementById('btn-resolve-save').addEventListener('click', async ()=>{
   const c = resolvingConflict;
-  if(!c) return;
-  const pickIdx = Number(document.querySelector('input[name="resolve-pick"]:checked').value);
+  if(!c || resolvingMeuIndex === -1) return;
   const novoValor = document.getElementById('resolve-novo-valor').value.trim();
   const explicacao = document.getElementById('resolve-explicacao').value.trim();
   if(!novoValor){ toast("Digite o novo valor."); return; }
   if(c.campo==='id' && !explicacao){ toast("Explique o que houve pra liberar a correção."); return; }
   setLoading(true);
   try{
-    const docId = c.animalIds[pickIdx];
+    const docId = c.animalIds[resolvingMeuIndex]; // sempre o cadastro do próprio auditor logado
     await db.collection('animais').doc(docId).update({ [c.campo]: novoValor });
     await db.collection('conflitos').doc(c.docId).update({
       status: 'resolvido',
@@ -969,6 +977,7 @@ document.getElementById('btn-resolve-save').addEventListener('click', async ()=>
     toast("Conflito corrigido! Liberado pros dois auditores.");
     hide('modal-resolve-conflict');
     resolvingConflict = null;
+    resolvingMeuIndex = -1;
     // reconfere se ainda restam outros conflitos abertos pra essa fazenda
     const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
     if(abertos.length){ openConflictsModal(abertos); }
