@@ -1203,10 +1203,13 @@ function renderPendenteChecklist(){
         ${pasto}<span class="count">${list.length} ${list.length>1?'animais':'animal'}</span>
       </label>
       ${list.map(a=>`
-        <label class="pend-item">
-          <input type="checkbox" class="item-check" data-id="${a.docId}" ${selectedPendIds.has(a.docId)?'checked':''}>
-          <span>#${a.ordem} · ID ${a.id} · ${a.peso}kg</span>
-        </label>`).join("")}
+        <div class="pend-item" style="justify-content:space-between;">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+            <input type="checkbox" class="item-check" data-id="${a.docId}" ${selectedPendIds.has(a.docId)?'checked':''}>
+            <span>#${a.ordem} · ID ${a.id} · ${a.peso}kg</span>
+          </label>
+          <span class="edit" data-editdest="${a.docId}">destino ✎</span>
+        </div>`).join("")}
     </div>`;
   }).join("");
 
@@ -1214,6 +1217,13 @@ function renderPendenteChecklist(){
     cb.addEventListener('change', ()=>{
       if(cb.checked) selectedPendIds.add(cb.dataset.id); else selectedPendIds.delete(cb.dataset.id);
       renderPendenteChecklist();
+    });
+  });
+  wrap.querySelectorAll('[data-editdest]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      openEditDestino(el.dataset.editdest);
     });
   });
   wrap.querySelectorAll('.grp-check').forEach(cb=>{
@@ -1276,22 +1286,20 @@ function renderConferidosView(){
     return;
   }
   wrap.innerHTML = list.map(a=>`
-    <div class="animal-row" data-id="${a.docId}">
+    <div class="animal-row" style="cursor:default;">
       <div class="id-block">
         <div class="tagid">#${a.ordem} · ID ${a.id}</div>
-        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} · ${formatDataBR(a.dataTrabalho)}</div>
+        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} · ${formatDataBR(a.dataTrabalho)} · 🔒 conferido</div>
       </div>
       <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
     </div>`).join("");
-  wrap.querySelectorAll('.animal-row').forEach(row=>{
-    row.addEventListener('click', ()=> openEditDestino(row.dataset.id));
-  });
 }
 document.getElementById('search-conferidos').addEventListener('input', renderConferidosView);
 
 function openEditDestino(docId){
   const a = animals.find(x=>x.docId===docId);
   if(!a) return;
+  if(a.confirmado){ toast("Esse animal já foi conferido — o destino não pode mais ser alterado."); return; }
   document.getElementById('conf-edit-destino-card').classList.remove('hide');
   document.getElementById('conf-edit-destino-card').dataset.editingId = docId;
   document.getElementById('ced-animal-lbl').textContent = `#${a.ordem} · ID ${a.id}`;
@@ -1318,6 +1326,8 @@ document.getElementById('ced-save').addEventListener('click', async ()=>{
     toast("Destino atualizado.");
     document.getElementById('conf-edit-destino-card').classList.add('hide');
     await loadAnimals();
+    renderPendenteResumo();
+    renderPendenteChecklist();
     renderConferidosView();
     renderHome();
   } catch(e){
@@ -1735,7 +1745,10 @@ function validateStep(key){
   switch(key){
     case 'ordem': return (d.ordem===""||d.ordem===null||isNaN(d.ordem)) ? "Informe o número de ordem." : null;
     case 'id': return !d.id.trim() ? "Informe o ID do animal." : null;
-    case 'peso': return (!d.peso || isNaN(d.peso) || Number(d.peso)<=0) ? "Informe um peso válido." : null;
+    case 'peso':
+      if(!d.peso || isNaN(d.peso) || Number(d.peso)<=0) return "Informe um peso válido.";
+      if(!d.pasto) return "Informe o destino do animal — escreva em \"Outro destino\" se nenhuma faixa configurada bateu.";
+      return null;
     case 'idade':
       if(!d.mesNasc || !d.anoNasc) return "Informe o mês e o ano de nascimento.";
       if(d.idadeMeses===""||isNaN(d.idadeMeses)||Number(d.idadeMeses)<0) return "Data de nascimento inválida.";
