@@ -437,6 +437,7 @@ body.login-mode #app{background:var(--ink);}
       <div class="brand"><span class="tag"></span>AuditaBoi</div>
       <button class="iconbtn" id="btn-logout">Sair</button>
     </div>
+    <div id="sync-badge" class="hide" style="margin:0 20px 10px;padding:8px 14px;background:#e7ddc4;color:var(--hide-dark);font-size:12.5px;font-weight:700;border-radius:9px;text-align:center;"></div>
     <div class="screen" style="padding-top:0;">
       <div class="farm-picker" id="farm-picker">
         <div>
@@ -759,17 +760,65 @@ const ADMIN_EMAIL = "menezesapptec@gmail.com";
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
 
-/* Busca com "tempo limite": tenta o servidor, mas se não responder rápido
-   (ex: caiu a internet bem na hora), usa o cache local na hora em vez de
-   ficar travado esperando. Evita a tela presa em "Carregando..." offline. */
-function getSafe(ref, timeoutMs=4000){
-  const tryCache = () => ref.get({ source: 'cache' }).catch(()=> ref.get());
-  if(!navigator.onLine) return tryCache();
+/* Busca com "tempo limite" de 3s: se o servidor não responder rápido
+   (ex: caiu a internet no curral), devolve um resultado vazio "incerto"
+   na hora — nunca fica travado esperando. O cadastro continua normal
+   e a checagem real de duplicidade acontece quando sincronizar. */
+function getSafe(ref, timeoutMs=3000){
+  const EMPTY_UNCERTAIN = { docs: [], empty: true, uncertain: true };
   return Promise.race([
-    ref.get(),
-    new Promise(resolve => setTimeout(()=> resolve('__TIMEOUT__'), timeoutMs))
-  ]).then(result => (result === '__TIMEOUT__') ? tryCache() : result);
+    ref.get().catch(()=> EMPTY_UNCERTAIN),
+    new Promise(resolve => setTimeout(()=> resolve(EMPTY_UNCERTAIN), timeoutMs))
+  ]);
 }
+function raceTimeout(promise, ms, fallbackValue){
+  return Promise.race([
+    promise.catch(()=> fallbackValue),
+    new Promise(resolve => setTimeout(()=> resolve(fallbackValue), ms))
+  ]);
+}
+
+/* ============================================================
+   FILA DE SINCRONIZAÇÃO (outbox) — cadastros ficam salvos no
+   navegador na hora, e tentam ir pro Firebase em segundo plano.
+   Sem internet, ninguém trava: fica na fila e sincroniza sozinho
+   quando a conexão voltar (ou a cada 30s, por garantia).
+   ============================================================ */
+function getOutbox(){
+  try{ return JSON.parse(localStorage.getItem('auditaboi_outbox') || '[]'); } catch(e){ return []; }
+}
+function setOutbox(list){
+  try{ localStorage.setItem('auditaboi_outbox', JSON.stringify(list)); } catch(e){}
+  updatePendingSyncBadge();
+}
+function addToOutbox(docId, payload){
+  const list = getOutbox().filter(item=>item.docId!==docId);
+  list.push({ docId, payload, addedAt: Date.now() });
+  setOutbox(list);
+}
+function removeFromOutbox(docId){
+  setOutbox(getOutbox().filter(item=>item.docId!==docId));
+}
+async function flushOutbox(){
+  const list = getOutbox();
+  if(!list.length) return;
+  for(const item of list){
+    try{
+      await raceTimeout(db.collection('animais').doc(item.docId).set(item.payload, {merge:true}), 5000, null).then(r=>{
+        if(r !== null) removeFromOutbox(item.docId); // r não-nulo = escrita confirmada
+      });
+    } catch(e){ /* segue tentando os próximos; esse permanece na fila */ }
+  }
+}
+function updatePendingSyncBadge(){
+  const el = document.getElementById('sync-badge');
+  if(!el) return;
+  const n = getOutbox().length;
+  if(n > 0){ el.textContent = `⏳ ${n} aguardando sincronizar`; el.classList.remove('hide'); }
+  else { el.classList.add('hide'); }
+}
+window.addEventListener('online', ()=>{ toast('✅ Conexão de volta — sincronizando dados.'); flushOutbox(); });
+setInterval(flushOutbox, 30000);
 
 /* ============================================================
    ESTADO
@@ -990,6 +1039,8 @@ auth.onAuthStateChanged(async (user)=>{
     await loadFarms();
     goScreen('home');
     renderHome();
+    updatePendingSyncBadge();
+    flushOutbox();
     if(!currentFarm) openFarmModal();
   } else {
     currentUser = null;
@@ -1124,6 +1175,7 @@ async function loadAnimals(){
 
 function renderHome(){
   document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Cadastrar fazenda";
+  updatePendingSyncBadge();
   document.getElementById('stat-total').textContent = animals.length;
   document.getElementById('stat-pendente').textContent = animals.filter(a=>!a.confirmado).length;
 
@@ -2103,6 +2155,10 @@ function renderStepRevisar(){
       wiz.blockReason = `Já existe um animal com ${dup.label} ${dup.value} ${descreverDuplicata(dup.animal)}.`;
       banner.innerHTML = `<div class="block-banner">⚠ Cadastro bloqueado — ${wiz.blockReason}</div>`;
       document.getElementById('btn-wiz-next').setAttribute('disabled','disabled');
+    } else if(duplicateCheckUncertain){
+      wiz.blockReason = null;
+      banner.innerHTML = `<div class="pasto-hint">📡 Sem conexão no momento — não deu pra cruzar com os outros retiros agora. Segue normal; será conferido automaticamente quando sincronizar.</div>`;
+      document.getElementById('btn-wiz-next').removeAttribute('disabled');
     } else {
       wiz.blockReason = null;
       banner.innerHTML = `<div class="ok-banner">✓ Nenhuma duplicidade encontrada</div>`;
@@ -2141,13 +2197,20 @@ function descreverDuplicata(dup){
   const retiro = dup.retiro ? `no retiro "${dup.retiro}"` : "na sede (sem retiro)";
   return `cadastrado em ${formatDataBR(dup.dataTrabalho)}, ${retiro} (Ordem ${dup.ordem})`;
 }
+let duplicateCheckUncertain = false; // true quando não deu pra checar duplicidade (offline/sem resposta)
+
 async function findDuplicate(field, value){
   if(!currentFarm || value===""||value===null||value===undefined) return null;
+  // 1) checa primeiro na lista já carregada (retiro atual) — instantâneo, funciona sempre, mesmo offline
+  const localMatch = animals.find(a => a.docId!==wiz.editingId && String(a[field]||"")===String(value));
+  if(localMatch) return localMatch;
+  // 2) cruza com o Firestore (outros retiros da mesma fazenda)
   const key = currentFarm.farmGroupKey || currentFarm.id; // compatibilidade com fazendas antigas sem farmGroupKey
   const q = currentFarm.farmGroupKey
     ? db.collection('animais').where('farmGroupKey','==',key).where(field,'==', value)
     : db.collection('animais').where('fazendaId','==',currentFarm.id).where(field,'==', value);
   const snap = await getSafe(q.limit(1));
+  if(snap.uncertain){ duplicateCheckUncertain = true; return null; }
   if(snap.empty) return null;
   const doc = snap.docs[0];
   if(doc.id === wiz.editingId) return null;
@@ -2155,6 +2218,7 @@ async function findDuplicate(field, value){
 }
 // Retorna {field, label, animal} do primeiro conflito encontrado, ou null
 async function checkDuplicates(){
+  duplicateCheckUncertain = false;
   const d = wiz.data;
   if(d.id){
     const dup = await findDuplicate('id', String(d.id));
@@ -2199,22 +2263,29 @@ async function salvarAnimal(){
   };
   setLoading(true);
   try{
-    if(wiz.data.pastoManual){ await registrarDestinoManual(d.peso, wiz.data.pastoManual); }
-    if(wiz.editingId){
-      await db.collection('animais').doc(wiz.editingId).update(payload);
-      const idx = animals.findIndex(a=>a.docId===wiz.editingId);
+    if(wiz.data.pastoManual){ await raceTimeout(registrarDestinoManual(d.peso, wiz.data.pastoManual), 3000, null); }
+
+    const isEdit = !!wiz.editingId;
+    const ref = isEdit ? db.collection('animais').doc(wiz.editingId) : db.collection('animais').doc();
+
+    if(isEdit){
+      const idx = animals.findIndex(a=>a.docId===ref.id);
       if(idx>-1) animals[idx] = { ...animals[idx], ...payload };
       toast("Animal atualizado.");
     } else {
-      payload.createdAt = firebase.firestore.Timestamp.now(); // timestamp local — evita reler o documento pra saber a hora
+      payload.createdAt = firebase.firestore.Timestamp.now(); // timestamp local — não depende do servidor
       payload.confirmado = false;
       payload.loteId = null;
-      const ref = await db.collection('animais').add(payload);
-      animals.push({ ...payload, docId: ref.id }); // atualiza a lista local sem gastar leitura extra
+      animals.push({ ...payload, docId: ref.id }); // já entra na lista local na hora, sem esperar a rede
       toast("Animal cadastrado! Pronto para o próximo.");
     }
+
+    // salva na fila local (garante contra queda de energia) e tenta enviar em segundo plano — nunca trava a tela
+    addToOutbox(ref.id, payload);
+    ref.set(payload, { merge: true }).then(()=> removeFromOutbox(ref.id)).catch(()=>{ /* fica na fila, tenta de novo depois */ });
+
     clearDraft();
-    if(wiz.editingId){
+    if(isEdit){
       goScreen('list'); renderList();
     } else {
       // segue no fluxo: prepara próximo cadastro com a próxima ordem do dia
