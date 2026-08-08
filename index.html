@@ -1844,43 +1844,37 @@ function calcIdadeMeses(mes, ano){
   return meses >= 0 ? meses : "";
 }
 function renderStepIdade(){
-  const el = stepWrap("Idade", "Mês e ano de nascimento — a idade atual é calculada automaticamente.",
-    `<div class="field">
-       <label>Mês de nascimento</label>
-       <select id="in-mes-nasc">
-         <option value="">Selecione</option>
-         ${["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map((m,i)=>`<option value="${i+1}" ${Number(wiz.data.mesNasc)===i+1?'selected':''}>${m}</option>`).join("")}
-       </select>
-     </div>
-     <div class="field hide" id="ano-nasc-field">
-       <label>Ano de nascimento</label>
-       <input type="number" id="in-ano-nasc" value="${wiz.data.anoNasc||''}" inputmode="numeric" placeholder="Ex: 2023">
+  const valorInicial = (wiz.data.mesNasc && wiz.data.anoNasc) ? `${String(wiz.data.mesNasc).padStart(2,'0')}/${String(wiz.data.anoNasc).slice(-2)}` : "";
+  const el = stepWrap("Idade", "Mês e ano de nascimento — ex: 8/26 = agosto de 2026. A idade atual é calculada automaticamente.",
+    `<div class="big-num-wrap">
+       <input type="text" id="in-nascimento" value="${valorInicial}" inputmode="numeric" placeholder="MM/AA" maxlength="5" style="letter-spacing:2px;">
      </div>
      <div class="apart-hint hide" id="idade-calc-hint"></div>`);
-  const anoField = ()=> document.getElementById('ano-nasc-field');
   const upd = ()=>{
-    const mes = document.getElementById('in-mes-nasc').value;
-    const ano = document.getElementById('in-ano-nasc').value;
-    wiz.data.mesNasc = mes ? Number(mes) : "";
-    wiz.data.anoNasc = ano ? Number(ano) : "";
-    anoField().classList.toggle('hide', !mes);
+    const campo = document.getElementById('in-nascimento');
+    const digits = campo.value.replace(/\D/g,'').slice(0,4);
+    const formatted = digits.length >= 3 ? digits.slice(0,2) + '/' + digits.slice(2) : digits;
+    if(formatted !== campo.value) campo.value = formatted;
+    const [mesStr, anoStr] = formatted.split('/');
+    const mes = mesStr ? Number(mesStr) : "";
     const hint = document.getElementById('idade-calc-hint');
-    if(mes && ano){
+    if(mes>=1 && mes<=12 && anoStr && anoStr.length===2){
+      const ano = 2000 + Number(anoStr);
+      wiz.data.mesNasc = mes;
+      wiz.data.anoNasc = ano;
       const idade = calcIdadeMeses(mes, ano);
       wiz.data.idadeMeses = idade;
       hint.textContent = idade!=="" ? `Idade atual: ${idade} meses (≈ ${(idade/12).toFixed(1)} anos)` : "Data inválida";
       hint.classList.remove('hide');
     } else {
+      wiz.data.mesNasc = "";
+      wiz.data.anoNasc = "";
       wiz.data.idadeMeses = "";
       hint.classList.add('hide');
     }
   };
   setTimeout(()=>{
-    document.getElementById('in-mes-nasc').addEventListener('change', ()=>{
-      upd();
-      if(document.getElementById('in-mes-nasc').value) document.getElementById('in-ano-nasc').focus();
-    });
-    document.getElementById('in-ano-nasc').addEventListener('input', upd);
+    document.getElementById('in-nascimento').addEventListener('input', upd);
     upd();
   });
   return el;
