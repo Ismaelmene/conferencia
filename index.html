@@ -759,6 +759,18 @@ const ADMIN_EMAIL = "menezesapptec@gmail.com";
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
 
+/* Busca com "tempo limite": tenta o servidor, mas se não responder rápido
+   (ex: caiu a internet bem na hora), usa o cache local na hora em vez de
+   ficar travado esperando. Evita a tela presa em "Carregando..." offline. */
+function getSafe(ref, timeoutMs=4000){
+  const tryCache = () => ref.get({ source: 'cache' }).catch(()=> ref.get());
+  if(!navigator.onLine) return tryCache();
+  return Promise.race([
+    ref.get(),
+    new Promise(resolve => setTimeout(()=> resolve('__TIMEOUT__'), timeoutMs))
+  ]).then(result => (result === '__TIMEOUT__') ? tryCache() : result);
+}
+
 /* ============================================================
    ESTADO
    ============================================================ */
@@ -964,7 +976,7 @@ auth.onAuthStateChanged(async (user)=>{
     // checa se essa conta foi cadastrada pelo admin e está ativa
     let liberado = false;
     try{
-      const doc = await db.collection('auditores').doc(user.uid).get();
+      const doc = await getSafe(db.collection('auditores').doc(user.uid));
       liberado = doc.exists && doc.data().ativo === true;
       if(liberado) currentAuditorNome = doc.data().nome || "";
     }catch(e){ console.error(e); }
@@ -993,7 +1005,7 @@ async function loadFarms(){
   setLoading(true);
   try{
     // todas as fazendas/retiros cadastrados pelo admin ficam visíveis pra qualquer auditor selecionar
-    const snap = await db.collection('fazendas').get();
+    const snap = await getSafe(db.collection('fazendas'));
     farms = snap.docs.map(d=>({id:d.id, ...d.data()}));
     document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Selecionar fazenda";
     if(currentFarm) await loadAnimals();
@@ -1105,7 +1117,7 @@ async function loadAnimals(){
   if(!currentFarm) { animals = []; return; }
   setLoading(true);
   try{
-    const snap = await db.collection('animais').where('fazendaId','==',currentFarm.id).get();
+    const snap = await getSafe(db.collection('animais').where('fazendaId','==',currentFarm.id));
     animals = snap.docs.map(d=>({...d.data(), docId:d.id}));
   } finally { setLoading(false); }
 }
@@ -1193,7 +1205,7 @@ async function loadLotes(){
   if(!currentFarm){ lotes=[]; return; }
   setLoading(true);
   try{
-    const snap = await db.collection('lotes').where('fazendaId','==',currentFarm.id).get();
+    const snap = await getSafe(db.collection('lotes').where('fazendaId','==',currentFarm.id));
     lotes = snap.docs.map(d=>({id:d.id, ...d.data()}));
     lotes.sort((a,b)=>{
       const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
@@ -2135,7 +2147,7 @@ async function findDuplicate(field, value){
   const q = currentFarm.farmGroupKey
     ? db.collection('animais').where('farmGroupKey','==',key).where(field,'==', value)
     : db.collection('animais').where('fazendaId','==',currentFarm.id).where(field,'==', value);
-  const snap = await q.limit(1).get();
+  const snap = await getSafe(q.limit(1));
   if(snap.empty) return null;
   const doc = snap.docs[0];
   if(doc.id === wiz.editingId) return null;
@@ -2251,7 +2263,7 @@ async function renderAdmin(){
   switchAdminTab('visao');
   setLoading(true);
   try{
-    const snap = await db.collection('fazendas').get();
+    const snap = await getSafe(db.collection('fazendas'));
     adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   } catch(e){ console.error(e); adminFazendas = []; }
   finally { setLoading(false); }
@@ -2429,7 +2441,7 @@ async function renderAdminFazendasList(){
   const wrap = document.getElementById('admin-fazendas-list');
   setLoading(true);
   try{
-    const snap = await db.collection('fazendas').get();
+    const snap = await getSafe(db.collection('fazendas'));
     adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   } catch(e){ console.error(e); } finally { setLoading(false); }
   if(!adminFazendas.length){ wrap.innerHTML = `<div class="empty-state">Nenhuma fazenda cadastrada ainda.</div>`; return; }
@@ -2519,7 +2531,7 @@ async function renderAuditoresList(){
   setLoading(true);
   let docs = [];
   try{
-    const snap = await db.collection('auditores').get();
+    const snap = await getSafe(db.collection('auditores'));
     docs = snap.docs.map(d=>({ uid:d.id, ...d.data() }));
   } catch(e){ console.error(e); } finally { setLoading(false); }
   if(!docs.length){ wrap.innerHTML = `<div class="empty-state">Nenhum auditor cadastrado ainda.</div>`; return; }
@@ -2619,7 +2631,7 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
     for(const row of rows){
       const idAnimal = String(row["ID"] || row["id"] || "").trim();
       if(!idAnimal){ semId++; continue; }
-      const dupSnap = await db.collection('animais').where('farmGroupKey','==',farmGroupKey).where('id','==',idAnimal).limit(1).get();
+      const dupSnap = await getSafe(db.collection('animais').where('farmGroupKey','==',farmGroupKey).where('id','==',idAnimal).limit(1));
       if(!dupSnap.empty){ duplicados++; continue; }
 
       const ref = db.collection('animais').doc();
