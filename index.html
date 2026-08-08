@@ -435,7 +435,10 @@ body.login-mode #app{background:var(--ink);}
   <div id="screen-home" class="screen hide">
     <div class="topbar">
       <div class="brand"><span class="tag"></span>AuditaBoi</div>
-      <button class="iconbtn" id="btn-logout">Sair</button>
+      <div style="text-align:right;">
+        <div id="logged-user-name" style="font-size:12.5px;font-weight:700;color:var(--ink-soft);"></div>
+        <button class="iconbtn" id="btn-logout" style="padding:2px 0;">Sair</button>
+      </div>
     </div>
     <div id="sync-badge" class="hide" style="margin:0 20px 10px;padding:8px 14px;background:#e7ddc4;color:var(--hide-dark);font-size:12.5px;font-weight:700;border-radius:9px;text-align:center;"></div>
     <div class="screen" style="padding-top:0;">
@@ -889,7 +892,7 @@ async function checkForConflict(docId, payload){
         createdAt: firebase.firestore.Timestamp.now(),
         resolvedAt: null, resolvedBy: null, explicacao: null
       });
-      toast(`⚠ Conflito de ${campo==='id'?'ID':'ID Antigo'} detectado: ${valor} está em dois retiros. Precisa corrigir.`);
+      toast(`⚠ Conflito de ${campo==='id'?'ID Novo':'ID Antigo'} detectado: ${valor} está em dois retiros. Precisa corrigir.`);
     } catch(e){ console.warn('Erro ao checar conflito:', e); }
   }
 }
@@ -906,7 +909,7 @@ function openConflictsModal(conflitos){
   wrap.innerHTML = conflitos.map(c=>{
     const [a,b] = c.detalhes;
     return `<div class="review-card" style="margin-bottom:12px;">
-      <div class="review-row"><span class="k">Campo</span><span class="v">${c.campo==='id'?'ID':'ID Antigo'} ${c.valor}</span></div>
+      <div class="review-row"><span class="k">Campo</span><span class="v">${c.campo==='id'?'ID Novo':'ID Antigo'} ${c.valor}</span></div>
       <div class="review-row"><span class="k">Ordem ${a.ordem} · ${a.retiro||'Sede'}</span><span class="v">${a.auditorNome||'—'}</span></div>
       <div class="review-row"><span class="k">Ordem ${b.ordem} · ${b.retiro||'Sede'}</span><span class="v">${b.auditorNome||'—'}</span></div>
       <button class="btn btn-primary" data-resolve="${c.docId}" style="margin-top:10px;">Corrigir agora</button>
@@ -927,7 +930,7 @@ function openResolveModal(c){
   resolvingConflict = c;
   const [a,b] = c.detalhes;
   document.getElementById('resolve-conflict-desc').textContent =
-    `O ${c.campo==='id'?'ID':'ID Antigo'} "${c.valor}" foi usado em dois animais ao mesmo tempo (offline). Escolha qual dos dois deve mudar de número.`;
+    `O ${c.campo==='id'?'ID Novo':'ID Antigo'} "${c.valor}" foi usado em dois animais ao mesmo tempo (offline). Escolha qual dos dois deve mudar de número.`;
   const picks = document.getElementById('resolve-conflict-picks');
   picks.innerHTML = [a,b].map((x,i)=>`
     <label class="opt-card" style="margin-bottom:10px;display:flex;">
@@ -1207,7 +1210,11 @@ auth.onAuthStateChanged(async (user)=>{
     try{
       const doc = await getSafe(db.collection('auditores').doc(user.uid));
       liberado = doc.exists && doc.data().ativo === true;
-      if(liberado) currentAuditorNome = doc.data().nome || "";
+      if(liberado){
+        currentAuditorNome = doc.data().nome || "";
+        const lbl = document.getElementById('logged-user-name');
+        if(lbl) lbl.textContent = currentAuditorNome ? `👤 ${currentAuditorNome}` : `👤 ${user.email}`;
+      }
     }catch(e){ console.error(e); }
     if(!liberado){
       const errEl = document.getElementById('login-err');
@@ -2550,7 +2557,7 @@ async function renderAdminConflitosList(){
     const resolvido = c.status === 'resolvido';
     return `<div class="review-card" style="margin-bottom:12px;border-color:${resolvido?'var(--grass)':'var(--alert)'};">
       <div class="review-row">
-        <span class="k" style="font-weight:900;">${c.campo==='id'?'ID':'ID Antigo'} ${c.valor}</span>
+        <span class="k" style="font-weight:900;">${c.campo==='id'?'ID Novo':'ID Antigo'} ${c.valor}</span>
         <span class="v" style="color:${resolvido?'var(--grass-deep)':'var(--alert)'};">${resolvido?'✓ Resolvido':'⚠ Aberto'}</span>
       </div>
       <div class="review-row"><span class="k">${c.fazendaNome||'—'}</span><span class="v"></span></div>
