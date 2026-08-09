@@ -2984,7 +2984,7 @@ function renderAdminCharts(lista){
   drawPie('chart-dg', charts, 'dg', Object.keys(cd.dg.combos), Object.values(cd.dg.combos));
 }
 
-const PIE_COLORS = ['#b9793f','#4f6e46','#2c5a86','#a9382f','#e2b64f','#7a5c9e','#3a5233','#96622f','#5c8ca8'];
+const PIE_COLORS = ['#b9793f','#4f6e46','#2c5a86','#a9382f','#e2b64f','#7a5c9e','#3a5233','#96622f','#5c8ca8','#6b8e23','#c1443c','#4a6fa5','#8c6d46','#5f7a61','#a15c8f','#3f6b5c','#8a8a8a','#d4a24c','#4f4f8a','#7a3b2e'];
 
 // plugin: desenha a % dentro da fatia + uma linha guia ("seta") até o nome da categoria fora do círculo
 const leaderLinePlugin = {
@@ -3046,7 +3046,7 @@ Chart.register(leaderLinePlugin);
 // que acontecia ao esticar a imagem da tela pequena pra caber num tamanho de PDF diferente
 function renderChartForExport(titulo, labels, data){
   return new Promise((resolve)=>{
-    const W = 900, H = 620;
+    const W = 1000, H = 560;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     canvas.style.position = 'fixed'; canvas.style.left = '-99999px'; canvas.style.top = '0';
@@ -3057,11 +3057,31 @@ function renderChartForExport(titulo, labels, data){
       data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS, borderColor:'#fff', borderWidth:2 }] },
       options: {
         responsive: false, animation: false, devicePixelRatio: 2,
-        layout: { padding: { top: 50, bottom: 30, left: 90, right: 90 } },
+        layout: { padding: { top: 46, bottom: 20, left: 30, right: 20 } },
         plugins: {
-          leaderLines: { enabled: true },
-          legend: { display:false },
-          title: { display:true, text: titulo, font:{ size:26, weight:'bold' }, color:'#182619', padding:{bottom:14} },
+          leaderLines: { enabled: false },
+          legend: {
+            display: true, position: 'right',
+            labels: {
+              boxWidth: 22, boxHeight: 22, padding: 14,
+              font: { size: 16, family: "Inter, sans-serif" },
+              color: '#182619',
+              generateLabels: (chart)=>{
+                const ds = chart.data.datasets[0];
+                return chart.data.labels.map((lbl, i)=>{
+                  const val = ds.data[i];
+                  const pct = total ? Math.round(100*val/total) : 0;
+                  return {
+                    text: `${lbl} — ${val} (${pct}%)`,
+                    fillStyle: ds.backgroundColor[i],
+                    strokeStyle: ds.backgroundColor[i],
+                    index: i
+                  };
+                });
+              }
+            }
+          },
+          title: { display:true, text: titulo, font:{ size:26, weight:'bold' }, color:'#182619', padding:{bottom:16} },
           tooltip: { enabled:false }
         }
       }
