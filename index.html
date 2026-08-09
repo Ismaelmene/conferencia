@@ -1967,7 +1967,7 @@ function exportExcelFrom(list, label){
   XLSX.utils.book_append_sheet(wb, ws, "Rebanho");
   XLSX.writeFile(wb, exportFileName("xlsx", label));
 }
-function exportPDFFrom(list, label, charts){
+async function exportPDFFrom(list, label, chartsSpec){
   if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'landscape' });
@@ -1975,29 +1975,25 @@ function exportPDFFrom(list, label, charts){
   const resumo = resumoOperacoes(list);
   let paginaUsada = false;
 
-  // páginas dedicadas aos gráficos primeiro — 2 por página, grandes, bem visíveis
-  if(charts && charts.length){
-    for(let i=0; i<charts.length; i+=2){
+  // páginas dedicadas aos gráficos primeiro — 2 por página, grandes, com setas indicando cada categoria
+  if(chartsSpec && chartsSpec.length){
+    for(let i=0; i<chartsSpec.length; i+=2){
       if(paginaUsada) doc.addPage();
       paginaUsada = true;
       doc.setFontSize(14);
       doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
-      doc.setFontSize(10);
-      doc.text("Gráficos", 14, 21);
-      const par = charts.slice(i, i+2);
-      par.forEach((c, idx)=>{
-        const canvas = document.getElementById(c.id);
-        if(!canvas || !canvas.toDataURL) return;
+      const par = chartsSpec.slice(i, i+2);
+      const maxW = 128, maxH = 150, y = 26;
+      for(let idx=0; idx<par.length; idx++){
+        const c = par[idx];
         try{
-          const imgData = canvas.toDataURL('image/png', 1.0);
-          const w = 128, h = 96;
+          const { imgData, ratio } = await renderChartForExport(c.titulo, c.labels, c.data);
+          let w = maxW, h = w / ratio;
+          if(h > maxH){ h = maxH; w = h * ratio; }
           const x = idx===0 ? 12 : 150;
-          const y = 34;
-          doc.setFontSize(13);
-          doc.text(c.titulo, x, y);
-          doc.addImage(imgData, 'PNG', x, y+5, w, h);
-        } catch(e){ /* navegador bloqueou ler o canvas — segue sem essa imagem */ }
-      });
+          doc.addImage(imgData, 'PNG', x, y, w, h);
+        } catch(e){ /* algo falhou ao gerar esse gráfico — segue sem ele */ }
+      }
     }
   }
 
@@ -2908,13 +2904,17 @@ document.getElementById('btn-admin-export-xlsx').addEventListener('click', ()=>{
   const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
   exportExcelFrom(adminFilteredList(), nomeFazenda);
 });
-document.getElementById('btn-admin-export-pdf').addEventListener('click', ()=>{
+document.getElementById('btn-admin-export-pdf').addEventListener('click', async ()=>{
   const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
-  exportPDFFrom(adminFilteredList(), nomeFazenda, [
-    { id:'chart-categoria', titulo:'Por categoria e raça' },
-    { id:'chart-sexo', titulo:'Por sexo' },
-    { id:'chart-dg', titulo:'Diagnóstico gestacional' }
-  ]);
+  const lista = adminFilteredList();
+  if(!lista.length){ toast("Nenhum animal para exportar."); return; }
+  setLoading(true);
+  const cd = computeChartsData(lista);
+  const chartsSpec = Object.values(cd).map(g=>({
+    titulo: g.titulo, labels: Object.keys(g.combos), data: Object.values(g.combos)
+  }));
+  await exportPDFFrom(lista, nomeFazenda, chartsSpec);
+  setLoading(false);
 });
 
 function applyRetiroFilterAndRender(){
@@ -2985,6 +2985,96 @@ function renderAdminCharts(lista){
 }
 
 const PIE_COLORS = ['#b9793f','#4f6e46','#2c5a86','#a9382f','#e2b64f','#7a5c9e','#3a5233','#96622f','#5c8ca8'];
+
+// plugin: desenha a % dentro da fatia + uma linha guia ("seta") até o nome da categoria fora do círculo
+const leaderLinePlugin = {
+  id: 'leaderLines',
+  afterDraw(chart){
+    if(!chart.config.options.plugins || !chart.config.options.plugins.leaderLines || !chart.config.options.plugins.leaderLines.enabled) return;
+    const { ctx } = chart;
+    const meta = chart.getDatasetMeta(0);
+    const dsData = chart.data.datasets[0].data;
+    const total = dsData.reduce((a,b)=>a+b, 0);
+    meta.data.forEach((arc, i)=>{
+      const val = dsData[i];
+      if(!val) return;
+      const pct = total ? Math.round(100*val/total) : 0;
+      const props = arc.getProps(['startAngle','endAngle','outerRadius','x','y'], true);
+      const midAngle = (props.startAngle + props.endAngle) / 2;
+      const cx = props.x, cy = props.y;
+
+      // % dentro da fatia
+      const rIn = props.outerRadius * 0.62;
+      ctx.save();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 3;
+      ctx.fillText(pct + '%', cx + Math.cos(midAngle)*rIn, cy + Math.sin(midAngle)*rIn);
+      ctx.restore();
+
+      // seta/linha guia até o rótulo fora do círculo
+      const r1 = props.outerRadius + 8;
+      const r2 = props.outerRadius + 34;
+      const x1 = cx + Math.cos(midAngle)*r1, y1 = cy + Math.sin(midAngle)*r1;
+      const x2 = cx + Math.cos(midAngle)*r2, y2 = cy + Math.sin(midAngle)*r2;
+      const alignRight = Math.cos(midAngle) >= 0;
+      const x3 = x2 + (alignRight ? 22 : -22);
+      ctx.save();
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y2); ctx.stroke();
+      // pontinha de seta
+      ctx.beginPath();
+      ctx.moveTo(x1,y1);
+      ctx.lineTo(x1 + Math.cos(midAngle+2.6)*6, y1 + Math.sin(midAngle+2.6)*6);
+      ctx.lineTo(x1 + Math.cos(midAngle-2.6)*6, y1 + Math.sin(midAngle-2.6)*6);
+      ctx.closePath();
+      ctx.fillStyle = '#333'; ctx.fill();
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillStyle = '#182619';
+      ctx.textAlign = alignRight ? 'left' : 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(chart.data.labels[i], x3 + (alignRight?5:-5), y2);
+      ctx.restore();
+    });
+  }
+};
+Chart.register(leaderLinePlugin);
+
+// gera uma imagem de gráfico em tamanho fixo (900x620), só pra exportação — evita a deformação
+// que acontecia ao esticar a imagem da tela pequena pra caber num tamanho de PDF diferente
+function renderChartForExport(titulo, labels, data){
+  return new Promise((resolve)=>{
+    const W = 900, H = 620;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    canvas.style.position = 'fixed'; canvas.style.left = '-99999px'; canvas.style.top = '0';
+    document.body.appendChild(canvas);
+    const total = data.reduce((a,b)=>a+b, 0);
+    const tempChart = new Chart(canvas, {
+      type: 'pie',
+      data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS, borderColor:'#fff', borderWidth:2 }] },
+      options: {
+        responsive: false, animation: false, devicePixelRatio: 2,
+        layout: { padding: { top: 50, bottom: 30, left: 90, right: 90 } },
+        plugins: {
+          leaderLines: { enabled: true },
+          legend: { display:false },
+          title: { display:true, text: titulo, font:{ size:26, weight:'bold' }, color:'#182619', padding:{bottom:14} },
+          tooltip: { enabled:false }
+        }
+      }
+    });
+    setTimeout(()=>{
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      tempChart.destroy();
+      document.body.removeChild(canvas);
+      resolve({ imgData, ratio: W/H });
+    }, 60);
+  });
+}
+
 function drawPie(canvasId, store, key, labels, data){
   const ctx = document.getElementById(canvasId);
   if(!ctx) return;
@@ -2996,6 +3086,7 @@ function drawPie(canvasId, store, key, labels, data){
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
+        leaderLines: { enabled: false },
         legend: {
           position: 'right',
           labels: {
