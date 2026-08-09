@@ -471,6 +471,13 @@ body.login-mode #app{background:var(--ink);}
         <button class="btn btn-primary" id="btn-start-wizard">▶ Iniciar auditoria</button>
       </div>
 
+      <div class="review-card hide" id="operacao-card" style="margin-bottom:14px;">
+        <div class="review-row"><span class="k">Operação de hoje</span><span class="v" id="operacao-status">—</span></div>
+        <div class="review-row"><span class="k">Início</span><span class="v" id="operacao-inicio">—</span></div>
+        <div class="review-row hide" id="operacao-fim-row"><span class="k">Fim</span><span class="v" id="operacao-fim">—</span></div>
+        <button class="btn btn-secondary" id="btn-finalizar-operacao" style="margin-top:12px;color:var(--alert);">🏁 Finalizar operação</button>
+      </div>
+
       <div class="grid2">
         <div class="stat-card"><div class="num" id="stat-total">0</div><div class="lbl">Total no rebanho</div></div>
         <div class="stat-card"><div class="num" id="stat-pendente">0</div><div class="lbl">Aguard. liberação</div></div>
@@ -1405,9 +1412,78 @@ async function loadAnimals(){
   } finally { setLoading(false); }
 }
 
+/* ============================================================
+   OPERAÇÃO DO AUDITOR — registra horário de início e fim do dia
+   de trabalho daquele auditor específico, naquele retiro. Se outro
+   auditor assumir, é só logar — a dele começa e registra separado.
+   ============================================================ */
+function operacaoDocId(dataISO){
+  return `${currentFarm.id}_${currentUser.uid}_${dataISO}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+}
+async function garantirOperacaoIniciada(dataISO){
+  if(!currentFarm || !currentUser) return;
+  const id = operacaoDocId(dataISO);
+  try{
+    const doc = await getSafe(db.collection('operacoes').doc(id), 2000);
+    if(doc.uncertain) return; // offline — não trava, só não registra agora
+    if(!doc.exists){
+      await raceTimeout(db.collection('operacoes').doc(id).set({
+        fazendaId: currentFarm.id, farmGroupKey: currentFarm.farmGroupKey||'', fazendaNome: currentFarm.nome||'',
+        retiro: currentFarm.retiro||'', auditorEmail: currentUser.email, auditorNome: currentAuditorNome||currentUser.email,
+        dataTrabalho: dataISO, horaInicio: firebase.firestore.Timestamp.now(), horaFim: null, status: 'aberta'
+      }), 3000, null);
+    } else if(doc.data().status === 'finalizada'){
+      await raceTimeout(db.collection('operacoes').doc(id).update({ status:'aberta' }), 3000, null);
+    }
+  } catch(e){ console.warn('Erro ao registrar início da operação:', e); }
+  renderOperacaoCard();
+}
+async function renderOperacaoCard(){
+  const card = document.getElementById('operacao-card');
+  if(!card) return;
+  if(!currentFarm || !currentUser){ card.classList.add('hide'); return; }
+  try{
+    const doc = await getSafe(db.collection('operacoes').doc(operacaoDocId(todayISO())), 2000);
+    if(doc.uncertain || !doc.exists){ card.classList.add('hide'); return; }
+    const d = doc.data();
+    card.classList.remove('hide');
+    document.getElementById('operacao-status').textContent = d.status==='finalizada' ? '🔒 Finalizada' : '🟢 Em andamento';
+    document.getElementById('operacao-inicio').textContent = d.horaInicio && d.horaInicio.toDate ? d.horaInicio.toDate().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—';
+    const fimRow = document.getElementById('operacao-fim-row');
+    if(d.status==='finalizada' && d.horaFim){
+      fimRow.classList.remove('hide');
+      document.getElementById('operacao-fim').textContent = d.horaFim.toDate ? d.horaFim.toDate().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—';
+      document.getElementById('btn-finalizar-operacao').textContent = '🔓 Reabrir operação';
+    } else {
+      fimRow.classList.add('hide');
+      document.getElementById('btn-finalizar-operacao').textContent = '🏁 Finalizar operação';
+    }
+  } catch(e){ card.classList.add('hide'); }
+}
+document.getElementById('btn-finalizar-operacao').addEventListener('click', async ()=>{
+  if(!currentFarm || !currentUser) return;
+  const id = operacaoDocId(todayISO());
+  setLoading(true);
+  try{
+    const doc = await getSafe(db.collection('operacoes').doc(id), 2000);
+    const jaFinalizada = !doc.uncertain && doc.exists && doc.data().status === 'finalizada';
+    if(jaFinalizada){
+      await db.collection('operacoes').doc(id).update({ status:'aberta' });
+      toast('Operação reaberta.');
+    } else {
+      if(!confirm('Finalizar a operação de hoje? Registra o horário final agora. Se precisar continuar depois, é só clicar em "Reabrir operação".')){ setLoading(false); return; }
+      await db.collection('operacoes').doc(id).set({ status:'finalizada', horaFim: firebase.firestore.Timestamp.now() }, {merge:true});
+      toast('Operação finalizada!');
+    }
+    renderOperacaoCard();
+  } catch(e){ console.error(e); toast('Erro ao atualizar a operação.'); }
+  finally { setLoading(false); }
+});
+
 function renderHome(){
   document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Cadastrar fazenda";
   updatePendingSyncBadge();
+  renderOperacaoCard();
   document.getElementById('stat-total').textContent = animals.length;
   document.getElementById('stat-pendente').textContent = animals.filter(a=>!a.confirmado).length;
 
@@ -1855,25 +1931,82 @@ function exportFileName(ext, label){
   return `auditoria-${farm}-${todayISO()}.${ext}`;
 }
 
-function exportExcelFrom(list, label){
+function resumoOperacoes(list){
+  const grupos = {};
+  list.forEach(a=>{
+    const key = `${a.auditorNome||a.auditorEmail||'—'}|${a.retiro||'Sede'}|${a.dataTrabalho||''}`;
+    if(!grupos[key]) grupos[key] = { auditor:a.auditorNome||a.auditorEmail||'—', retiro:a.retiro||'Sede', data:a.dataTrabalho||'', fazenda:a.fazendaNome||'', min:null, max:null, total:0 };
+    const t = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : null;
+    if(t!==null){
+      if(grupos[key].min===null || t<grupos[key].min) grupos[key].min = t;
+      if(grupos[key].max===null || t>grupos[key].max) grupos[key].max = t;
+    }
+    grupos[key].total++;
+  });
+  return Object.values(grupos).map(g=>({
+    "Auditor": g.auditor, "Fazenda": g.fazenda, "Retiro": g.retiro, "Data": formatDataBR(g.data),
+    "Horário Inicial": g.min ? new Date(g.min).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—',
+    "Horário Final": g.max ? new Date(g.max).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—',
+    "Total de animais": g.total
+  }));
+}
+
+function exportExcelFrom(list, label, chartsData){
   if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const rows = exportRowsFrom(list);
-  const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
+  const wsResumo = XLSX.utils.json_to_sheet(resumoOperacoes(list));
+  XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo Operação");
+  if(chartsData){
+    const wsGraficos = XLSX.utils.json_to_sheet(chartsToExcelRows(chartsData));
+    XLSX.utils.book_append_sheet(wb, wsGraficos, "Gráficos");
+  }
+  const ws = XLSX.utils.json_to_sheet(rows);
   XLSX.utils.book_append_sheet(wb, ws, "Rebanho");
   XLSX.writeFile(wb, exportFileName("xlsx", label));
 }
-function exportPDFFrom(list, label){
+function exportPDFFrom(list, label, charts){
   if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'landscape' });
   const rows = exportRowsFrom(list);
+  const resumo = resumoOperacoes(list);
   doc.setFontSize(14);
   doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
   doc.setFontSize(9);
   doc.text(`Exportado em ${formatDataBR(todayISO())} · ${list.length} animais`, 14, 20);
   doc.autoTable({
     startY: 26,
+    head: [Object.keys(resumo[0])],
+    body: resumo.map(r=>Object.values(r)),
+    styles: { fontSize: 7.5, cellPadding: 2 },
+    headStyles: { fillColor: [44,90,134] },
+    margin: { bottom: 4 }
+  });
+  let y = doc.lastAutoTable.finalY + 8;
+  // gráficos (cada fatia já sai com a cor + o rótulo da categoria do lado, tipo legenda)
+  if(charts && charts.length){
+    doc.setFontSize(11);
+    doc.text("Gráficos", 14, y);
+    y += 5;
+    let x = 14;
+    charts.forEach(c=>{
+      const canvas = document.getElementById(c.id);
+      if(!canvas || !canvas.toDataURL) return;
+      try{
+        const imgData = canvas.toDataURL('image/png', 1.0);
+        const w = 88, h = 58;
+        if(x + w > 280){ x = 14; y += h + 12; }
+        doc.setFontSize(8.5);
+        doc.text(c.titulo, x, y);
+        doc.addImage(imgData, 'PNG', x, y+2, w, h);
+        x += w + 6;
+      } catch(e){ /* navegador bloqueou ler o canvas — segue sem essa imagem */ }
+    });
+    y += 70;
+  }
+  doc.autoTable({
+    startY: y,
     head: [Object.keys(rows[0])],
     body: rows.map(r=>Object.values(r)),
     styles: { fontSize: 7.5, cellPadding: 2 },
@@ -1970,6 +2103,7 @@ document.getElementById('btn-modal-confirm').addEventListener('click', ()=>{
   if(!v){ toast("Escolha uma data."); return; }
   sessionWorkDate = v;
   hide('modal-start');
+  garantirOperacaoIniciada(sessionWorkDate);
   newWizard();
   wiz.data.ordem = nextOrdemForDate(sessionWorkDate);
   goScreen('wizard');
@@ -2111,11 +2245,28 @@ function selectOptionByNumber(stepKey, value){
     if(btn && !btn.disabled) btn.click();
   }
 }
+function selectParidadeByNumber(value){
+  const card = document.querySelector(`#opt-paridade .opt-card[data-v="${value}"]`);
+  if(!card) return;
+  card.click();
+  const btn = document.getElementById('btn-wiz-next');
+  if(btn && !btn.disabled) btn.click();
+}
 document.addEventListener('keydown', (e)=>{
   if(!/^[1-9]$/.test(e.key)) return;
-  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if(e.target && e.target.tagName === 'TEXTAREA') return;
   if(document.getElementById('screen-wizard').classList.contains('hide')) return;
   if(!wiz) return;
+  // se o foco estiver dentro da Paridade, o número seleciona ali (não na opção principal do DG)
+  if(document.activeElement && document.activeElement.closest && document.activeElement.closest('#opt-paridade')){
+    const idxParidade = Number(e.key) - 1;
+    if(idxParidade>=0 && idxParidade<PARIDADE_OPCOES.length){
+      e.preventDefault();
+      selectParidadeByNumber(PARIDADE_OPCOES[idxParidade]);
+    }
+    return;
+  }
+  if(e.target && e.target.tagName === 'INPUT') return;
   const steps = activeSteps();
   const step = steps[wiz.idx];
   const getter = OPTION_STEP_LISTS[step.key];
@@ -2374,6 +2525,14 @@ function renderStepDG(){
       });
     });
     document.getElementById('in-idadegest').addEventListener('input', e=> wiz.data.idadeGestacional = e.target.value);
+    document.getElementById('in-idadegest').addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        e.stopPropagation(); // não deixa o Enter global tentar avançar de etapa
+        const primeiroCard = document.querySelector('#opt-paridade .opt-card');
+        if(primeiroCard) primeiroCard.focus();
+      }
+    });
     bindParidadeCards();
     toggleIdade();
   });
@@ -2736,11 +2895,16 @@ document.getElementById('admin-data-de').addEventListener('change', applyRetiroF
 document.getElementById('admin-data-ate').addEventListener('change', applyRetiroFilterAndRender);
 document.getElementById('btn-admin-export-xlsx').addEventListener('click', ()=>{
   const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
-  exportExcelFrom(adminFilteredList(), nomeFazenda);
+  const lista = adminFilteredList();
+  exportExcelFrom(lista, nomeFazenda, computeChartsData(lista));
 });
 document.getElementById('btn-admin-export-pdf').addEventListener('click', ()=>{
   const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
-  exportPDFFrom(adminFilteredList(), nomeFazenda);
+  exportPDFFrom(adminFilteredList(), nomeFazenda, [
+    { id:'chart-categoria', titulo:'Por categoria e raça' },
+    { id:'chart-sexo', titulo:'Por sexo' },
+    { id:'chart-dg', titulo:'Diagnóstico gestacional' }
+  ]);
 });
 
 function applyRetiroFilterAndRender(){
@@ -2769,27 +2933,45 @@ async function loadAdminScopedAnimals(){
   } finally { setLoading(false); }
 }
 
-function renderAdminCharts(lista){
-  document.getElementById('admin-stat-total').textContent = lista.length;
-  document.getElementById('admin-stat-pendente').textContent = lista.filter(a=>!a.confirmado).length;
-
+function computeChartsData(lista){
   const catCombos = {};
   lista.forEach(a=>{
     const k = `${a.categoria||'—'} ${a.raca||''}`.trim();
     catCombos[k] = (catCombos[k]||0)+1;
   });
-  drawPie('chart-categoria', charts, 'categoria', Object.keys(catCombos), Object.values(catCombos));
-
   const sexoCombos = { "Macho":0, "Fêmea":0 };
   lista.forEach(a=>{ if(sexoCombos[a.sexo]!==undefined) sexoCombos[a.sexo]++; });
-  drawPie('chart-sexo', charts, 'sexo', Object.keys(sexoCombos), Object.values(sexoCombos));
-
   const dgCombos = {};
   lista.forEach(a=>{
     const k = a.dg || "—";
     dgCombos[k] = (dgCombos[k]||0)+1;
   });
-  drawPie('chart-dg', charts, 'dg', Object.keys(dgCombos), Object.values(dgCombos));
+  return {
+    categoria: { titulo:'Por categoria e raça', combos: catCombos },
+    sexo: { titulo:'Por sexo', combos: sexoCombos },
+    dg: { titulo:'Diagnóstico gestacional', combos: dgCombos }
+  };
+}
+function chartsToExcelRows(chartsData){
+  const linhas = [];
+  Object.values(chartsData).forEach(grupo=>{
+    const total = Object.values(grupo.combos).reduce((a,b)=>a+b,0);
+    linhas.push({ "Gráfico": grupo.titulo, "Categoria": "", "Quantidade": "", "Porcentagem": "" });
+    Object.entries(grupo.combos).forEach(([k,v])=>{
+      linhas.push({ "Gráfico": "", "Categoria": k, "Quantidade": v, "Porcentagem": total?`${Math.round(100*v/total)}%`:"0%" });
+    });
+  });
+  return linhas;
+}
+
+function renderAdminCharts(lista){
+  document.getElementById('admin-stat-total').textContent = lista.length;
+  document.getElementById('admin-stat-pendente').textContent = lista.filter(a=>!a.confirmado).length;
+
+  const cd = computeChartsData(lista);
+  drawPie('chart-categoria', charts, 'categoria', Object.keys(cd.categoria.combos), Object.values(cd.categoria.combos));
+  drawPie('chart-sexo', charts, 'sexo', Object.keys(cd.sexo.combos), Object.values(cd.sexo.combos));
+  drawPie('chart-dg', charts, 'dg', Object.keys(cd.dg.combos), Object.values(cd.dg.combos));
 }
 
 const PIE_COLORS = ['#b9793f','#4f6e46','#2c5a86','#a9382f','#e2b64f','#7a5c9e','#3a5233','#96622f','#5c8ca8'];
