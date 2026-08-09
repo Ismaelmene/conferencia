@@ -2005,8 +2005,10 @@ async function exportPDFFrom(list, label, chartsSpec){
     startY: y,
     head: [Object.keys(rows[0])],
     body: rows.map(r=>Object.values(r)),
-    styles: { fontSize: 8, cellPadding: 2.5 },
-    headStyles: { fillColor: [24,38,25] }
+    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak', minCellWidth: 16 },
+    headStyles: { fillColor: [24,38,25], halign: 'left', valign: 'middle' },
+    horizontalPageBreak: true,
+    horizontalPageBreakRepeat: 0 // repete a coluna "Ordem" em cada página extra, pra continuar dando pra identificar a linha
   });
   doc.save(exportFileName("pdf", label));
 }
