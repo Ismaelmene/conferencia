@@ -3031,6 +3031,41 @@ if('serviceWorker' in navigator){
   });
 }
 
+/* ---------- som de abertura ("tum-tum" grave, gerado no código, sem arquivo) ---------- */
+let brandSoundPlayed = false;
+function playBrandSound(){
+  if(brandSoundPlayed) return;
+  try{
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if(!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    function thump(time, freq){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, time);
+      osc.frequency.exponentialRampToValueAtTime(freq*0.55, time+0.28);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.55, time+0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time+0.38);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(time);
+      osc.stop(time+0.4);
+    }
+    thump(now, 100);        // "tum"
+    thump(now+0.34, 85);    // "tum" — segundo, um pouco mais grave
+    brandSoundPlayed = true;
+  } catch(e){ console.warn('Som de abertura não pôde tocar:', e); }
+}
+playBrandSound();
+// alguns navegadores bloqueiam som antes de qualquer clique — se isso acontecer,
+// toca assim que a pessoa interagir pela primeira vez com a página
+['click','touchstart','keydown'].forEach(ev=>{
+  window.addEventListener(ev, ()=> playBrandSound(), { once:true, passive:true });
+});
+
 /* ---------- tela de abertura (logo) — some depois de 3s ---------- */
 setTimeout(()=>{
   const splash = document.getElementById('splash-screen');
