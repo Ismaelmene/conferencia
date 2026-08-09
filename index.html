@@ -2995,7 +2995,7 @@ const leaderLinePlugin = {
       const cx = props.x, cy = props.y;
       const alignRight = Math.cos(midAngle) >= 0;
       const r1 = props.outerRadius + 10;
-      const r2 = props.outerRadius + 46;
+      const r2 = props.outerRadius + 78;
       items.push({
         i, val, midAngle, cx, cy, alignRight, outerRadius: props.outerRadius,
         x1: cx + Math.cos(midAngle)*r1, y1: cy + Math.sin(midAngle)*r1,
@@ -3005,7 +3005,7 @@ const leaderLinePlugin = {
     });
 
     // 2ª passada: empurra os rótulos que colidiriam (mesmo lado, muito perto verticalmente)
-    const minGap = 30;
+    const minGap = 36;
     const topFloor = (chartArea ? chartArea.top : 0) + 26;
     const bottomCeil = (chartArea ? chartArea.bottom : 9999) - 10;
     function espacar(lado){
@@ -3032,28 +3032,28 @@ const leaderLinePlugin = {
       const rIn = it.outerRadius * 0.62;
       ctx.save();
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 30px Inter, sans-serif';
+      ctx.font = 'bold 18px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 3;
       ctx.fillText(it.pct + '%', it.cx + Math.cos(it.midAngle)*rIn, it.cy + Math.sin(it.midAngle)*rIn);
       ctx.restore();
 
       // seta/linha guia até o rótulo (já na posição espaçada)
-      const r2 = it.outerRadius + 46;
+      const r2 = it.outerRadius + 78;
       const x2 = it.cx + Math.cos(it.midAngle)*r2;
       const y2 = it.yAjustado;
-      const x3 = x2 + (it.alignRight ? 30 : -30);
+      const x3 = x2 + (it.alignRight ? 34 : -34);
       ctx.save();
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 1.8;
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 0.9;
       ctx.beginPath(); ctx.moveTo(it.x1,it.y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y2); ctx.stroke();
       // pontinha de seta
       ctx.beginPath();
       ctx.moveTo(it.x1,it.y1);
-      ctx.lineTo(it.x1 + Math.cos(it.midAngle+2.6)*9, it.y1 + Math.sin(it.midAngle+2.6)*9);
-      ctx.lineTo(it.x1 + Math.cos(it.midAngle-2.6)*9, it.y1 + Math.sin(it.midAngle-2.6)*9);
+      ctx.lineTo(it.x1 + Math.cos(it.midAngle+2.6)*7, it.y1 + Math.sin(it.midAngle+2.6)*7);
+      ctx.lineTo(it.x1 + Math.cos(it.midAngle-2.6)*7, it.y1 + Math.sin(it.midAngle-2.6)*7);
       ctx.closePath();
-      ctx.fillStyle = '#333'; ctx.fill();
+      ctx.fillStyle = '#555'; ctx.fill();
       ctx.font = '600 20px Inter, sans-serif';
       ctx.fillStyle = '#182619';
       ctx.textAlign = it.alignRight ? 'left' : 'right';
@@ -3179,7 +3179,7 @@ async function drawChartReportPage(doc, spec){
 
 function renderChartForExport(titulo, labels, data){
   return new Promise((resolve)=>{
-    const W = 1100, H = 1000;
+    const W = 1300, H = 1000;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     canvas.style.position = 'fixed'; canvas.style.left = '-99999px'; canvas.style.top = '0';
@@ -3187,10 +3187,10 @@ function renderChartForExport(titulo, labels, data){
     const total = data.reduce((a,b)=>a+b, 0);
     const tempChart = new Chart(canvas, {
       type: 'pie',
-      data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS, borderColor:'#fff', borderWidth:2, radius:'72%' }] },
+      data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS, borderColor:'#fff', borderWidth:2, radius:'62%' }] },
       options: {
         responsive: false, animation: false, devicePixelRatio: 2,
-        layout: { padding: { top: 40, bottom: 40, left: 150, right: 150 } },
+        layout: { padding: { top: 40, bottom: 40, left: 190, right: 190 } },
         plugins: {
           leaderLines: { enabled: true },
           legend: { display:false },
