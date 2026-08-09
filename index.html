@@ -423,6 +423,7 @@ body.login-mode #app{background:var(--ink);}
 <body class="login-mode">
 <div id="splash-screen">
   <img src="logo-aimex.jpg" alt="AIMEX Software">
+  <audio id="splash-audio" src="som-abertura.mp3" preload="auto"></audio>
 </div>
 <div id="app">
 
@@ -1044,7 +1045,7 @@ const SEXO_POR_CATEGORIA = {
 };
 const RACAS = ["Nelore","Cruzado","Angus","Outros"];
 const DG_OPCOES = ["Prenhe IATF","Prenhe Touro","Vazia","Não se aplica"];
-const PARIDADE_OPCOES = ["Primípara","Multípara"];
+const PARIDADE_OPCOES = ["Primípara","Multípara","Solteira","Novilha"];
 const APART_FAIXAS = [
   {lbl:"< 360", min:-Infinity, max:359},
   {lbl:"361–390", min:361, max:390},
@@ -3031,47 +3032,15 @@ if('serviceWorker' in navigator){
   });
 }
 
-/* ---------- som de abertura ("tum-tum" grave, gerado no código, sem arquivo) ---------- */
+/* ---------- som de abertura: só toca se você subir o arquivo som-abertura.mp3.
+   Se não tiver o arquivo, fica em silêncio (sem tentar gerar som por código). ---------- */
 let brandSoundPlayed = false;
 function playBrandSound(){
   if(brandSoundPlayed) return;
-  try{
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if(!AudioCtx) return;
-    const ctx = new AudioCtx();
-
-    const fireThumps = ()=>{
-      const now = ctx.currentTime;
-      function thump(time, freq){
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const lowpass = ctx.createBiquadFilter();
-        lowpass.type = 'lowpass';
-        lowpass.frequency.value = 220; // corta os agudos, deixa só o grave/encorpado
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, time);
-        osc.frequency.exponentialRampToValueAtTime(freq*0.5, time+0.35);
-        gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(0.8, time+0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, time+0.5);
-        osc.connect(lowpass);
-        lowpass.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(time);
-        osc.stop(time+0.55);
-      }
-      thump(now, 68);        // "tum" grave
-      thump(now+0.36, 52);   // "tum" — segundo, ainda mais grave
-      brandSoundPlayed = true;
-    };
-
-    // navegador cria o áudio "pausado" por padrão — precisa mandar "acordar" antes de tocar
-    if(ctx.state === 'suspended'){
-      ctx.resume().then(fireThumps).catch(()=>{});
-    } else {
-      fireThumps();
-    }
-  } catch(e){ console.warn('Som de abertura não pôde tocar:', e); }
+  const audioEl = document.getElementById('splash-audio');
+  if(!audioEl) return;
+  audioEl.currentTime = 0;
+  audioEl.play().then(()=>{ brandSoundPlayed = true; }).catch(()=>{ /* sem arquivo ou bloqueado — sem problema, segue em silêncio */ });
 }
 playBrandSound();
 // alguns navegadores bloqueiam som antes de qualquer clique — se isso acontecer,
