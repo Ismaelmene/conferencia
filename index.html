@@ -1970,53 +1970,56 @@ function exportExcelFrom(list, label){
 async function exportPDFFrom(list, label, chartsSpec){
   if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation:'landscape' });
+  const temGraficos = chartsSpec && chartsSpec.length;
+  // páginas de gráficos: retrato (vertical). páginas de tabela: paisagem (têm muitas colunas, precisam da largura)
+  const doc = new jsPDF({ orientation: temGraficos ? 'portrait' : 'landscape' });
   const rows = exportRowsFrom(list);
   const resumo = resumoOperacoes(list);
   let paginaUsada = false;
 
-  // páginas dedicadas aos gráficos primeiro — 2 por página, grandes, com setas indicando cada categoria
-  if(chartsSpec && chartsSpec.length){
+  // páginas dedicadas aos gráficos primeiro — retrato, 2 por página empilhados, bem grandes, com distância segura entre eles
+  if(temGraficos){
     for(let i=0; i<chartsSpec.length; i+=2){
-      if(paginaUsada) doc.addPage();
+      if(paginaUsada) doc.addPage('a4','portrait');
       paginaUsada = true;
-      doc.setFontSize(14);
-      doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
+      doc.setFontSize(15);
+      doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 16);
       const par = chartsSpec.slice(i, i+2);
-      const maxW = 128, maxH = 150, y = 26;
+      const maxW = 178, maxH = 108;
+      let yCursor = 28;
       for(let idx=0; idx<par.length; idx++){
         const c = par[idx];
         try{
           const { imgData, ratio } = await renderChartForExport(c.titulo, c.labels, c.data);
           let w = maxW, h = w / ratio;
           if(h > maxH){ h = maxH; w = h * ratio; }
-          const x = idx===0 ? 12 : 150;
-          doc.addImage(imgData, 'PNG', x, y, w, h);
+          doc.addImage(imgData, 'PNG', 14, yCursor, w, h);
+          yCursor += h + 26; // distância segura pra não colar no próximo gráfico
         } catch(e){ /* algo falhou ao gerar esse gráfico — segue sem ele */ }
       }
     }
   }
 
-  // depois vêm as informações normais, iguais já eram
-  if(paginaUsada) doc.addPage();
+  // depois vêm as informações normais, em paisagem (mais larga, cabe melhor as colunas)
+  if(paginaUsada) doc.addPage('a4','landscape');
   doc.setFontSize(14);
   doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
   doc.setFontSize(9);
   doc.text(`Exportado em ${formatDataBR(todayISO())} · ${list.length} animais`, 14, 20);
   doc.autoTable({
-    startY: 26,
+    startY: 27,
     head: [Object.keys(resumo[0])],
     body: resumo.map(r=>Object.values(r)),
-    styles: { fontSize: 7.5, cellPadding: 2 },
+    styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [44,90,134] },
-    margin: { bottom: 4 }
+    margin: { bottom: 6 }
   });
-  let y = doc.lastAutoTable.finalY + 8;
+  let y = doc.lastAutoTable.finalY + 12; // espaço seguro entre as duas tabelas
   doc.autoTable({
     startY: y,
     head: [Object.keys(rows[0])],
     body: rows.map(r=>Object.values(r)),
-    styles: { fontSize: 7.5, cellPadding: 2 },
+    styles: { fontSize: 8, cellPadding: 2.5 },
     headStyles: { fillColor: [24,38,25] }
   });
   doc.save(exportFileName("pdf", label));
