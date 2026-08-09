@@ -504,6 +504,10 @@ body.login-mode #app{background:var(--ink);}
       <button class="iconbtn" id="btn-list-back">Início</button>
     </div>
     <div class="screen" style="padding-top:0;">
+      <div class="btn-row" style="margin-bottom:14px;">
+        <button class="btn btn-secondary sub-tab active" id="rtab-hoje">Hoje</button>
+        <button class="btn btn-secondary sub-tab" id="rtab-anteriores">Anteriores</button>
+      </div>
       <div class="search-bar">
         <input type="text" id="search-input" placeholder="Buscar por ID ou Ordem...">
       </div>
@@ -637,6 +641,22 @@ body.login-mode #app{background:var(--ink);}
         </div>
         <div class="section-title" style="margin-top:4px;">Retiros (marque um ou mais)</div>
         <div id="admin-scope-info"></div>
+
+        <div class="field">
+          <label>Período</label>
+          <select id="admin-periodo-tipo">
+            <option value="todos">Todo período</option>
+            <option value="intervalo">Escolher datas</option>
+          </select>
+        </div>
+        <div class="btn-row hide" id="admin-periodo-datas">
+          <div class="field" style="flex:1;"><label>De</label><input type="date" id="admin-data-de"></div>
+          <div class="field" style="flex:1;"><label>Até</label><input type="date" id="admin-data-ate"></div>
+        </div>
+        <div class="btn-row" style="margin:6px 0 18px;">
+          <button class="btn btn-secondary" id="btn-admin-export-xlsx">⬇ Excel</button>
+          <button class="btn btn-secondary" id="btn-admin-export-pdf">⬇ PDF</button>
+        </div>
 
         <div class="grid2" style="margin-bottom:6px;">
           <div class="stat-card"><div class="num" id="admin-stat-total">0</div><div class="lbl">Total auditado</div></div>
@@ -1793,11 +1813,19 @@ document.getElementById('btn-save-pasto').addEventListener('click', async ()=>{
    LISTA / BUSCA
    ============================================================ */
 document.getElementById('search-input').addEventListener('input', renderList);
-document.getElementById('btn-export-xlsx').addEventListener('click', exportExcel);
-document.getElementById('btn-export-pdf').addEventListener('click', exportPDF);
+document.getElementById('btn-export-xlsx').addEventListener('click', ()=> exportExcelFrom(rebanhoListaFiltradaPorData(), `${currentFarm?.nome||'rebanho'}-${rebanhoView}`));
+document.getElementById('btn-export-pdf').addEventListener('click', ()=> exportPDFFrom(rebanhoListaFiltradaPorData(), `${currentFarm?.nome||'rebanho'}-${rebanhoView}`));
 
-function exportRows(){
-  return animals.slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(a=>({
+function periodoDoDia(timestamp){
+  if(!timestamp || !timestamp.toDate) return "—";
+  const h = timestamp.toDate().getHours();
+  if(h < 12) return "Matutino";
+  if(h < 18) return "Vespertino";
+  return "Noturno";
+}
+
+function exportRowsFrom(list){
+  return list.slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(a=>({
     "Ordem": a.ordem,
     "ID Antigo": a.idAntigo||"",
     "ID": a.id,
@@ -1813,33 +1841,37 @@ function exportRows(){
     "Idade Gestacional (meses)": a.idadeGestacional||"",
     "Paridade": a.paridade||"",
     "Data": formatDataBR(a.dataTrabalho || a.mes),
+    "Período": periodoDoDia(a.createdAt),
+    "Auditor": a.auditorNome||a.auditorEmail||"",
+    "Retiro": a.retiro||"Sede",
+    "Fazenda": a.fazendaNome||"",
     "Obs": a.obs||""
   }));
 }
+function exportRows(){ return exportRowsFrom(animals); }
 
-function exportFileName(ext){
-  const farm = (currentFarm?.nome||"rebanho").replace(/[^a-z0-9]+/gi,'-').toLowerCase();
+function exportFileName(ext, label){
+  const farm = ((label||currentFarm?.nome)||"rebanho").replace(/[^a-z0-9]+/gi,'-').toLowerCase();
   return `auditoria-${farm}-${todayISO()}.${ext}`;
 }
 
-function exportExcel(){
-  if(!animals.length){ toast("Nenhum animal para exportar."); return; }
-  const rows = exportRows();
+function exportExcelFrom(list, label){
+  if(!list.length){ toast("Nenhum animal para exportar."); return; }
+  const rows = exportRowsFrom(list);
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Rebanho");
-  XLSX.writeFile(wb, exportFileName("xlsx"));
+  XLSX.writeFile(wb, exportFileName("xlsx", label));
 }
-
-function exportPDF(){
-  if(!animals.length){ toast("Nenhum animal para exportar."); return; }
+function exportPDFFrom(list, label){
+  if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'landscape' });
-  const rows = exportRows();
+  const rows = exportRowsFrom(list);
   doc.setFontSize(14);
-  doc.text(`Auditoria de rebanho — ${currentFarm?.nome||""}`, 14, 14);
+  doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
   doc.setFontSize(9);
-  doc.text(`Exportado em ${formatDataBR(todayISO())} · ${animals.length} animais`, 14, 20);
+  doc.text(`Exportado em ${formatDataBR(todayISO())} · ${list.length} animais`, 14, 20);
   doc.autoTable({
     startY: 26,
     head: [Object.keys(rows[0])],
@@ -1847,15 +1879,32 @@ function exportPDF(){
     styles: { fontSize: 7.5, cellPadding: 2 },
     headStyles: { fillColor: [24,38,25] }
   });
-  doc.save(exportFileName("pdf"));
+  doc.save(exportFileName("pdf", label));
+}
+function exportExcel(){ exportExcelFrom(animals); }
+function exportPDF(){ exportPDFFrom(animals); }
+
+let rebanhoView = 'hoje';
+function switchRebanhoTab(which){
+  rebanhoView = which;
+  document.getElementById('rtab-hoje').classList.toggle('active', which==='hoje');
+  document.getElementById('rtab-anteriores').classList.toggle('active', which==='anteriores');
+  renderList();
+}
+document.getElementById('rtab-hoje').addEventListener('click', ()=> switchRebanhoTab('hoje'));
+document.getElementById('rtab-anteriores').addEventListener('click', ()=> switchRebanhoTab('anteriores'));
+
+function rebanhoListaFiltradaPorData(){
+  const hoje = todayISO();
+  return animals.filter(a => rebanhoView==='hoje' ? (a.dataTrabalho===hoje) : (a.dataTrabalho!==hoje));
 }
 
 function renderList(){
   const q = document.getElementById('search-input').value.trim().toLowerCase();
   const listEl = document.getElementById('animal-list');
-  let filtered = animals;
+  let filtered = rebanhoListaFiltradaPorData();
   if(q){
-    filtered = animals.filter(a =>
+    filtered = filtered.filter(a =>
       String(a.id||"").toLowerCase().includes(q) ||
       String(a.ordem||"").toLowerCase().includes(q) ||
       String(a.idAntigo||"").toLowerCase().includes(q)
@@ -1867,12 +1916,17 @@ function renderList(){
     return;
   }
   listEl.innerHTML = filtered.map(a => `
-    <div class="animal-row" data-id="${a.docId}">
-      <div class="id-block">
-        <div class="tagid">#${a.ordem} · ID ${a.id}</div>
-        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} ${a.dg && a.dg!=="Não se aplica" ? "· "+a.dg : ""}${!a.confirmado ? ' · ⏳ pendente' : ''}</div>
+    <div class="animal-row" data-id="${a.docId}" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+        <div class="id-block">
+          <div class="tagid">#${a.ordem} · ID ${a.id}</div>
+          <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto ? " · 📍"+a.pasto : ""} ${a.dg && a.dg!=="Não se aplica" ? "· "+a.dg : ""}${a.confirmado ? ' · 🔒 conferido' : ' · ⏳ pendente'}</div>
+        </div>
+        <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
       </div>
-      <div class="peso">${a.peso||"—"}<span style="font-size:11px;font-weight:600;"> kg</span></div>
+      <div class="meta" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line);">
+        ${formatDataBR(a.dataTrabalho)} · ${periodoDoDia(a.createdAt)} — ${a.auditorNome||a.auditorEmail||'—'} · ${a.retiro||'Sede'} · ${a.fazendaNome||''}
+      </div>
     </div>`).join("");
   document.querySelectorAll('.animal-row').forEach(row=>{
     row.addEventListener('click', ()=> openAnimalForEdit(row.dataset.id));
@@ -1882,6 +1936,7 @@ function renderList(){
 function openAnimalForEdit(docId){
   const a = animals.find(x=>x.docId===docId);
   if(!a) return;
+  if(a.confirmado){ toast("Esse animal já foi conferido — não pode mais ser editado."); return; }
   newWizard();
   wiz.editingId = docId;
   wiz.data = {
@@ -2662,8 +2717,34 @@ function renderRetiroChecklist(){
   });
 }
 
+function adminFilteredList(){
+  let lista = adminAllAnimals.filter(a => selectedRetiros.has(a.retiro || 'Sede'));
+  const tipo = document.getElementById('admin-periodo-tipo').value;
+  if(tipo === 'intervalo'){
+    const de = document.getElementById('admin-data-de').value;
+    const ate = document.getElementById('admin-data-ate').value;
+    if(de) lista = lista.filter(a => (a.dataTrabalho||'') >= de);
+    if(ate) lista = lista.filter(a => (a.dataTrabalho||'') <= ate);
+  }
+  return lista;
+}
+document.getElementById('admin-periodo-tipo').addEventListener('change', (e)=>{
+  document.getElementById('admin-periodo-datas').classList.toggle('hide', e.target.value!=='intervalo');
+  applyRetiroFilterAndRender();
+});
+document.getElementById('admin-data-de').addEventListener('change', applyRetiroFilterAndRender);
+document.getElementById('admin-data-ate').addEventListener('change', applyRetiroFilterAndRender);
+document.getElementById('btn-admin-export-xlsx').addEventListener('click', ()=>{
+  const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
+  exportExcelFrom(adminFilteredList(), nomeFazenda);
+});
+document.getElementById('btn-admin-export-pdf').addEventListener('click', ()=>{
+  const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
+  exportPDFFrom(adminFilteredList(), nomeFazenda);
+});
+
 function applyRetiroFilterAndRender(){
-  const filtrada = adminAllAnimals.filter(a => selectedRetiros.has(a.retiro || 'Sede'));
+  const filtrada = adminFilteredList();
   renderAdminCharts(filtrada);
   renderAdminFeed(filtrada);
 }
