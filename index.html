@@ -2001,14 +2001,18 @@ async function exportPDFFrom(list, label, chartsSpec){
     margin: { bottom: 6 }
   });
   let y = doc.lastAutoTable.finalY + 12; // espaço seguro entre as duas tabelas
+  const pdfHeaders = [
+    "Ordem","ID\nAntigo","ID","Peso\n(Kg)","Apartação","Destino","Idade\n(meses)","Nascimento\n(mês/ano)",
+    "Raça","Categoria","Sexo","DG","Idade\nGestacional\n(meses)","Paridade","Data","Período","Auditor","Retiro","Fazenda","Obs"
+  ];
   doc.autoTable({
     startY: y,
-    head: [Object.keys(rows[0])],
+    head: [pdfHeaders],
     body: rows.map(r=>Object.values(r)),
-    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak', minCellWidth: 16 },
-    headStyles: { fillColor: [24,38,25], halign: 'left', valign: 'middle' },
-    horizontalPageBreak: true,
-    horizontalPageBreakRepeat: 0 // repete a coluna "Ordem" em cada página extra, pra continuar dando pra identificar a linha
+    styles: { fontSize: 6.3, cellPadding: 1.4, overflow: 'linebreak', valign: 'middle' },
+    headStyles: { fillColor: [24,38,25], fontSize: 6.3, halign: 'center', valign: 'middle' },
+    bodyStyles: { halign: 'center' },
+    columnStyles: { 19: { halign: 'left' } } // Obs alinhado à esquerda, mais fácil de ler texto livre
   });
   doc.save(exportFileName("pdf", label));
 }
