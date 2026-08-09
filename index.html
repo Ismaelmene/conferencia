@@ -2987,51 +2987,85 @@ const leaderLinePlugin = {
   id: 'leaderLines',
   afterDraw(chart){
     if(!chart.config.options.plugins || !chart.config.options.plugins.leaderLines || !chart.config.options.plugins.leaderLines.enabled) return;
-    const { ctx } = chart;
+    const { ctx, chartArea } = chart;
     const meta = chart.getDatasetMeta(0);
     const dsData = chart.data.datasets[0].data;
     const total = dsData.reduce((a,b)=>a+b, 0);
+
+    // 1ª passada: calcula a posição "natural" de cada rótulo (baseada no ângulo da fatia)
+    const items = [];
     meta.data.forEach((arc, i)=>{
       const val = dsData[i];
       if(!val) return;
-      const pct = total ? Math.round(100*val/total) : 0;
       const props = arc.getProps(['startAngle','endAngle','outerRadius','x','y'], true);
       const midAngle = (props.startAngle + props.endAngle) / 2;
       const cx = props.x, cy = props.y;
+      const alignRight = Math.cos(midAngle) >= 0;
+      const r1 = props.outerRadius + 10;
+      const r2 = props.outerRadius + 46;
+      items.push({
+        i, val, midAngle, cx, cy, alignRight, outerRadius: props.outerRadius,
+        x1: cx + Math.cos(midAngle)*r1, y1: cy + Math.sin(midAngle)*r1,
+        yNatural: cy + Math.sin(midAngle)*r2,
+        pct: total ? Math.round(100*val/total) : 0
+      });
+    });
 
+    // 2ª passada: empurra os rótulos que colidiriam (mesmo lado, muito perto verticalmente)
+    const minGap = 30;
+    const topFloor = (chartArea ? chartArea.top : 0) + 26;
+    const bottomCeil = (chartArea ? chartArea.bottom : 9999) - 10;
+    function espacar(lado){
+      lado.sort((a,b)=> a.yNatural - b.yNatural);
+      let prevY = topFloor - minGap;
+      lado.forEach(it=>{
+        let y = Math.max(it.yNatural, prevY + minGap);
+        it.yAjustado = y;
+        prevY = y;
+      });
+      // se estourou embaixo, comprime de volta mantendo a ordem
+      if(lado.length && lado[lado.length-1].yAjustado > bottomCeil){
+        const excesso = lado[lado.length-1].yAjustado - bottomCeil;
+        const passo = excesso / lado.length;
+        lado.forEach((it,idx)=>{ it.yAjustado -= passo * (idx+1); });
+      }
+    }
+    espacar(items.filter(it=>it.alignRight));
+    espacar(items.filter(it=>!it.alignRight));
+
+    // 3ª passada: desenha tudo já nas posições sem sobreposição
+    items.forEach(it=>{
       // % dentro da fatia
-      const rIn = props.outerRadius * 0.62;
+      const rIn = it.outerRadius * 0.62;
       ctx.save();
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 30px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
-      ctx.fillText(pct + '%', cx + Math.cos(midAngle)*rIn, cy + Math.sin(midAngle)*rIn);
+      ctx.fillText(it.pct + '%', it.cx + Math.cos(it.midAngle)*rIn, it.cy + Math.sin(it.midAngle)*rIn);
       ctx.restore();
 
-      // seta/linha guia até o rótulo fora do círculo
-      const r1 = props.outerRadius + 10;
-      const r2 = props.outerRadius + 50;
-      const x1 = cx + Math.cos(midAngle)*r1, y1 = cy + Math.sin(midAngle)*r1;
-      const x2 = cx + Math.cos(midAngle)*r2, y2 = cy + Math.sin(midAngle)*r2;
-      const alignRight = Math.cos(midAngle) >= 0;
-      const x3 = x2 + (alignRight ? 30 : -30);
+      // seta/linha guia até o rótulo (já na posição espaçada)
+      const r2 = it.outerRadius + 46;
+      const x2 = it.cx + Math.cos(it.midAngle)*r2;
+      const y2 = it.yAjustado;
+      const x3 = x2 + (it.alignRight ? 30 : -30);
       ctx.save();
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 2.2;
-      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y2); ctx.stroke();
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(it.x1,it.y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y2); ctx.stroke();
       // pontinha de seta
       ctx.beginPath();
-      ctx.moveTo(x1,y1);
-      ctx.lineTo(x1 + Math.cos(midAngle+2.6)*9, y1 + Math.sin(midAngle+2.6)*9);
-      ctx.lineTo(x1 + Math.cos(midAngle-2.6)*9, y1 + Math.sin(midAngle-2.6)*9);
+      ctx.moveTo(it.x1,it.y1);
+      ctx.lineTo(it.x1 + Math.cos(it.midAngle+2.6)*9, it.y1 + Math.sin(it.midAngle+2.6)*9);
+      ctx.lineTo(it.x1 + Math.cos(it.midAngle-2.6)*9, it.y1 + Math.sin(it.midAngle-2.6)*9);
       ctx.closePath();
       ctx.fillStyle = '#333'; ctx.fill();
-      ctx.font = '600 22px Inter, sans-serif';
+      ctx.font = '600 20px Inter, sans-serif';
       ctx.fillStyle = '#182619';
-      ctx.textAlign = alignRight ? 'left' : 'right';
+      ctx.textAlign = it.alignRight ? 'left' : 'right';
       ctx.textBaseline = 'middle';
-      ctx.fillText(chart.data.labels[i], x3 + (alignRight?7:-7), y2);
+      ctx.fillText(chart.data.labels[it.i], x3 + (it.alignRight?7:-7), y2);
       ctx.restore();
     });
   }
@@ -3050,7 +3084,7 @@ function renderChartForExport(titulo, labels, data){
     const total = data.reduce((a,b)=>a+b, 0);
     const tempChart = new Chart(canvas, {
       type: 'pie',
-      data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS, borderColor:'#fff', borderWidth:2 }] },
+      data: { labels, datasets: [{ data, backgroundColor: PIE_COLORS, borderColor:'#fff', borderWidth:2, radius:'75%' }] },
       options: {
         responsive: false, animation: false, devicePixelRatio: 2,
         layout: { padding: { top: 70, bottom: 40, left: 130, right: 40 } },
