@@ -935,7 +935,7 @@ async function checkForConflict(docId, payload){
         createdAt: firebase.firestore.Timestamp.now(),
         resolvedAt: null, resolvedBy: null, explicacao: null
       });
-      toast(`⚠ Conflito de ${campo==='id'?'ID Novo':'ID Antigo'} detectado: ${valor} está em dois retiros. Precisa corrigir.`);
+      toast(`⚠ Conflito de ${campo==='id'?'ID':'ID Antigo'} detectado: ${valor} está em dois retiros. Precisa corrigir.`);
     } catch(e){ console.warn('Erro ao checar conflito:', e); }
   }
 }
@@ -954,7 +954,7 @@ function openConflictsModal(conflitos){
     const souEu = [a,b].some(x => x.auditorEmail === currentUser.email);
     const outro = [a,b].find(x => x.auditorEmail !== currentUser.email) || {};
     return `<div class="review-card" style="margin-bottom:12px;">
-      <div class="review-row"><span class="k">Campo</span><span class="v">${c.campo==='id'?'ID Novo':'ID Antigo'} ${c.valor}</span></div>
+      <div class="review-row"><span class="k">Campo</span><span class="v">${c.campo==='id'?'ID':'ID Antigo'} ${c.valor}</span></div>
       <div class="review-row"><span class="k">Ordem ${a.ordem} · ${a.retiro||'Sede'}</span><span class="v">${a.auditorNome||'—'}</span></div>
       <div class="review-row"><span class="k">Ordem ${b.ordem} · ${b.retiro||'Sede'}</span><span class="v">${b.auditorNome||'—'}</span></div>
       ${souEu
@@ -987,7 +987,7 @@ function openResolveModal(c){
   const meu = [a,b][meuIndex];
   const outro = [a,b][1-meuIndex];
   document.getElementById('resolve-conflict-desc').textContent =
-    `O ${c.campo==='id'?'ID Novo':'ID Antigo'} "${c.valor}" também foi usado no retiro "${outro.retiro||'Sede'}" (${outro.auditorNome||'outro auditor'}). Você vai corrigir só o SEU cadastro: Ordem ${meu.ordem}, retiro "${meu.retiro||'Sede'}".`;
+    `O ${c.campo==='id'?'ID':'ID Antigo'} "${c.valor}" também foi usado no retiro "${outro.retiro||'Sede'}" (${outro.auditorNome||'outro auditor'}). Você vai corrigir só o SEU cadastro: Ordem ${meu.ordem}, retiro "${meu.retiro||'Sede'}".`;
   document.getElementById('resolve-conflict-picks').innerHTML = "";
   document.getElementById('resolve-novo-valor').value = "";
   document.getElementById('resolve-explicacao').value = "";
@@ -1041,19 +1041,25 @@ function updatePendingSyncBadge(){
   if(n > 0){ el.textContent = `⏳ ${n} aguardando sincronizar`; el.classList.remove('hide'); }
   else { el.classList.add('hide'); }
 }
+async function checkConflictsProactively(){
+  if(!currentFarm || isAdmin) return;
+  if(!document.getElementById('modal-conflict').classList.contains('hide')) return; // já está mostrando
+  const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
+  if(abertos.length){
+    goScreen('home'); renderHome();
+    openConflictsModal(abertos);
+  }
+}
 window.addEventListener('online', async ()=>{
   toast('✅ Conexão de volta — sincronizando dados.');
   await flushOutbox();
-  // se a tela do wizard estiver aberta pra essa fazenda, confere na hora se apareceu conflito
-  if(currentFarm && !document.getElementById('screen-wizard').classList.contains('hide')){
-    const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
-    if(abertos.length){
-      goScreen('home'); renderHome();
-      openConflictsModal(abertos);
-    }
-  }
+  // assim que a internet voltar, checa na hora se apareceu conflito — interrompe o manejo até resolver
+  await checkConflictsProactively();
 });
-setInterval(flushOutbox, 30000);
+setInterval(async ()=>{
+  await flushOutbox();
+  if(navigator.onLine) await checkConflictsProactively();
+}, 30000);
 
 /* ============================================================
    ESTADO
@@ -1951,16 +1957,12 @@ function resumoOperacoes(list){
   }));
 }
 
-function exportExcelFrom(list, label, chartsData){
+function exportExcelFrom(list, label){
   if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const rows = exportRowsFrom(list);
   const wb = XLSX.utils.book_new();
   const wsResumo = XLSX.utils.json_to_sheet(resumoOperacoes(list));
   XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo Operação");
-  if(chartsData){
-    const wsGraficos = XLSX.utils.json_to_sheet(chartsToExcelRows(chartsData));
-    XLSX.utils.book_append_sheet(wb, wsGraficos, "Gráficos");
-  }
   const ws = XLSX.utils.json_to_sheet(rows);
   XLSX.utils.book_append_sheet(wb, ws, "Rebanho");
   XLSX.writeFile(wb, exportFileName("xlsx", label));
@@ -1971,6 +1973,36 @@ function exportPDFFrom(list, label, charts){
   const doc = new jsPDF({ orientation:'landscape' });
   const rows = exportRowsFrom(list);
   const resumo = resumoOperacoes(list);
+  let paginaUsada = false;
+
+  // páginas dedicadas aos gráficos primeiro — 2 por página, grandes, bem visíveis
+  if(charts && charts.length){
+    for(let i=0; i<charts.length; i+=2){
+      if(paginaUsada) doc.addPage();
+      paginaUsada = true;
+      doc.setFontSize(14);
+      doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
+      doc.setFontSize(10);
+      doc.text("Gráficos", 14, 21);
+      const par = charts.slice(i, i+2);
+      par.forEach((c, idx)=>{
+        const canvas = document.getElementById(c.id);
+        if(!canvas || !canvas.toDataURL) return;
+        try{
+          const imgData = canvas.toDataURL('image/png', 1.0);
+          const w = 128, h = 96;
+          const x = idx===0 ? 12 : 150;
+          const y = 34;
+          doc.setFontSize(13);
+          doc.text(c.titulo, x, y);
+          doc.addImage(imgData, 'PNG', x, y+5, w, h);
+        } catch(e){ /* navegador bloqueou ler o canvas — segue sem essa imagem */ }
+      });
+    }
+  }
+
+  // depois vêm as informações normais, iguais já eram
+  if(paginaUsada) doc.addPage();
   doc.setFontSize(14);
   doc.text(`Auditoria de rebanho — ${label||currentFarm?.nome||""}`, 14, 14);
   doc.setFontSize(9);
@@ -1984,27 +2016,6 @@ function exportPDFFrom(list, label, charts){
     margin: { bottom: 4 }
   });
   let y = doc.lastAutoTable.finalY + 8;
-  // gráficos (cada fatia já sai com a cor + o rótulo da categoria do lado, tipo legenda)
-  if(charts && charts.length){
-    doc.setFontSize(11);
-    doc.text("Gráficos", 14, y);
-    y += 5;
-    let x = 14;
-    charts.forEach(c=>{
-      const canvas = document.getElementById(c.id);
-      if(!canvas || !canvas.toDataURL) return;
-      try{
-        const imgData = canvas.toDataURL('image/png', 1.0);
-        const w = 88, h = 58;
-        if(x + w > 280){ x = 14; y += h + 12; }
-        doc.setFontSize(8.5);
-        doc.text(c.titulo, x, y);
-        doc.addImage(imgData, 'PNG', x, y+2, w, h);
-        x += w + 6;
-      } catch(e){ /* navegador bloqueou ler o canvas — segue sem essa imagem */ }
-    });
-    y += 70;
-  }
   doc.autoTable({
     startY: y,
     head: [Object.keys(rows[0])],
@@ -2796,7 +2807,7 @@ async function renderAdminConflitosList(){
     const resolvido = c.status === 'resolvido';
     return `<div class="review-card" style="margin-bottom:12px;border-color:${resolvido?'var(--grass)':'var(--alert)'};">
       <div class="review-row">
-        <span class="k" style="font-weight:900;">${c.campo==='id'?'ID Novo':'ID Antigo'} ${c.valor}</span>
+        <span class="k" style="font-weight:900;">${c.campo==='id'?'ID':'ID Antigo'} ${c.valor}</span>
         <span class="v" style="color:${resolvido?'var(--grass-deep)':'var(--alert)'};">${resolvido?'✓ Resolvido':'⚠ Aberto'}</span>
       </div>
       <div class="review-row"><span class="k">${c.fazendaNome||'—'}</span><span class="v"></span></div>
@@ -2895,8 +2906,7 @@ document.getElementById('admin-data-de').addEventListener('change', applyRetiroF
 document.getElementById('admin-data-ate').addEventListener('change', applyRetiroFilterAndRender);
 document.getElementById('btn-admin-export-xlsx').addEventListener('click', ()=>{
   const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
-  const lista = adminFilteredList();
-  exportExcelFrom(lista, nomeFazenda, computeChartsData(lista));
+  exportExcelFrom(adminFilteredList(), nomeFazenda);
 });
 document.getElementById('btn-admin-export-pdf').addEventListener('click', ()=>{
   const nomeFazenda = document.getElementById('admin-scope-fazenda').selectedOptions[0]?.textContent || 'fazenda';
