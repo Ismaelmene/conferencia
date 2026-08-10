@@ -3444,8 +3444,66 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
     const file = fileInput.files[0];
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type:'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval:"" });
+
+    function normTxt(s){
+      return String(s||"").trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    }
+
+    // pega a matriz bruta de cada aba (sem assumir que o cabeçalho é a linha 1) e acha
+    // a linha que realmente tem "Ordem" e "ID" — em algumas planilhas tem um painel-resumo
+    // ocupando as primeiras linhas antes da tabela de animais de verdade
+    function acharTabela(sheet){
+      const raw = XLSX.utils.sheet_to_json(sheet, { header:1, defval:"" });
+      const headerRowIdx = raw.findIndex(r => r.some(c=>normTxt(c)==='ordem') && r.some(c=>normTxt(c)==='id'));
+      if(headerRowIdx === -1) return null;
+      const headerRow = raw[headerRowIdx].map(normTxt);
+      const dataRows = raw.slice(headerRowIdx+1).filter(r => r.some(c=>String(c).trim()!==""));
+      return { headerRow, dataRows };
+    }
+    function getCol(headerRow, rowArr, ...nomesPossiveis){
+      for(const nome of nomesPossiveis){
+        const idx = headerRow.indexOf(normTxt(nome));
+        if(idx > -1) return rowArr[idx] !== undefined ? rowArr[idx] : "";
+      }
+      return "";
+    }
+
+    // prioriza a aba "Rebanho" (nosso próprio formato de exportação); senão, testa todas as abas até achar a tabela
+    let tabela = wb.Sheets['Rebanho'] ? acharTabela(wb.Sheets['Rebanho']) : null;
+    if(!tabela){
+      for(const nome of wb.SheetNames){
+        tabela = acharTabela(wb.Sheets[nome]);
+        if(tabela) break;
+      }
+    }
+    if(!tabela){
+      toast("Não encontrei uma tabela com colunas 'Ordem' e 'ID' nessa planilha. Confirma se o cabeçalho da tabela de animais tem essas colunas.");
+      setLoading(false);
+      return;
+    }
+    const { headerRow, dataRows } = tabela;
+    const rows = dataRows.map(r => ({
+      "Ordem": getCol(headerRow, r, "Ordem"),
+      "ID Antigo": getCol(headerRow, r, "ID Antigo"),
+      "ID": getCol(headerRow, r, "ID"),
+      "Peso (Kg)": getCol(headerRow, r, "Peso (Kg)", "Peso"),
+      "Apartação": getCol(headerRow, r, "Apartação"),
+      "Destino": getCol(headerRow, r, "Destino", "Pasto"),
+      "Idade (meses)": getCol(headerRow, r, "Idade (meses)"),
+      "Raça": getCol(headerRow, r, "Raça"),
+      "Categoria": getCol(headerRow, r, "Categoria"),
+      "Sexo": getCol(headerRow, r, "Sexo"),
+      "DG": getCol(headerRow, r, "DG"),
+      "Idade Gestacional (meses)": getCol(headerRow, r, "Idade Gestacional (meses)", "Idade Gestacional"),
+      "Paridade": getCol(headerRow, r, "Paridade"),
+      "Data": getCol(headerRow, r, "Data"),
+      "Obs": getCol(headerRow, r, "Obs")
+    }));
+    if(!rows.length){
+      toast("A tabela foi encontrada, mas não tem nenhuma linha de animal com dados.");
+      setLoading(false);
+      return;
+    }
 
     const farmGroupKey = slugifyFarmName(fazenda);
     // garante que existe um doc de fazenda/retiro pra essa operação
