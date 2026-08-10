@@ -971,11 +971,37 @@ async function checkForConflict(docId, payload){
   }
 }
 
+async function animalAindaExiste(docId){
+  if(!docId) return true; // sem id pra checar, assume que existe (não arrisca resolver à toa)
+  const doc = await getSafe(db.collection('animais').doc(docId), 3000);
+  if(doc.uncertain) return true; // não deu pra confirmar (offline/lento) — assume que existe, não resolve à toa
+  return !!doc.exists;
+}
 async function getOpenConflicts(farmGroupKey){
   if(!farmGroupKey) return [];
   const snap = await getSafe(db.collection('conflitos').where('farmGroupKey','==',farmGroupKey).where('status','==','aberto'), 4000);
   if(snap.uncertain) return []; // offline/sem resposta — não bloqueia (regra: sem internet, libera o manejo)
-  return snap.docs.map(d=>({ docId:d.id, ...d.data() }));
+  const abertos = snap.docs.map(d=>({ docId:d.id, ...d.data() }));
+
+  // autolimpeza: se um dos dois cadastros do conflito já não existe mais (já foi excluído por
+  // algum caminho antigo, antes dessa correção), resolve sozinho em vez de ficar preso pra sempre
+  const aindaAbertos = [];
+  for(const c of abertos){
+    const [idA, idB] = c.animalIds || [];
+    const existeA = await animalAindaExiste(idA);
+    const existeB = await animalAindaExiste(idB);
+    if(!existeA || !existeB){
+      await db.collection('conflitos').doc(c.docId).update({
+        status: 'resolvido',
+        resolvedAt: firebase.firestore.Timestamp.now(),
+        resolvedBy: 'sistema',
+        explicacao: 'Resolvido automaticamente: um dos cadastros duplicados já não existia mais.'
+      }).catch(()=>{});
+    } else {
+      aindaAbertos.push(c);
+    }
+  }
+  return aindaAbertos;
 }
 
 // quando um animal é excluído, fecha automaticamente qualquer conflito de ID aberto que envolvia ele
@@ -1065,7 +1091,9 @@ document.getElementById('btn-resolve-save').addEventListener('click', async ()=>
   setLoading(true);
   try{
     const docId = c.animalIds[resolvingMeuIndex]; // sempre o cadastro do próprio auditor logado
-    await db.collection('animais').doc(docId).update({ [c.campo]: novoValor });
+    if(await animalAindaExiste(docId)){
+      await db.collection('animais').doc(docId).update({ [c.campo]: novoValor });
+    } // se o cadastro já não existe mais, não tem o que corrigir nele — só fecha o conflito abaixo
     await db.collection('conflitos').doc(c.docId).update({
       status: 'resolvido',
       resolvedAt: firebase.firestore.Timestamp.now(),
