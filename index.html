@@ -457,6 +457,10 @@ body.login-mode #app{background:var(--ink);}
       </div>
     </div>
     <div id="sync-badge" class="hide" style="margin:0 20px 10px;padding:8px 14px;background:#e7ddc4;color:var(--hide-dark);font-size:12.5px;font-weight:700;border-radius:9px;text-align:center;"></div>
+    <div id="conflict-badge" class="hide" style="margin:0 20px 10px;padding:10px 14px;background:var(--alert-bg);color:var(--alert);font-size:12.5px;font-weight:700;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <span id="conflict-badge-text"></span>
+      <button id="btn-ver-conflitos" class="btn btn-secondary" style="padding:6px 12px;font-size:11.5px;flex-shrink:0;">Ver e corrigir</button>
+    </div>
     <div class="screen" style="padding-top:0;">
       <div class="farm-picker" id="farm-picker">
         <div>
@@ -980,6 +984,7 @@ function openConflictsModal(conflitos){
 document.getElementById('btn-conflict-later').addEventListener('click', ()=> hide('modal-conflict'));
 
 let resolvingConflict = null;
+let conflictResolveCallback = null; // o que fazer depois que TODOS os conflitos forem resolvidos (null = só fecha, sem ação)
 let resolvingMeuIndex = -1;
 function openResolveModal(c){
   const [a,b] = c.detalhes;
@@ -1029,10 +1034,14 @@ document.getElementById('btn-resolve-save').addEventListener('click', async ()=>
     resolvingMeuIndex = -1;
     // reconfere se ainda restam outros conflitos abertos pra essa fazenda
     const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
-    if(abertos.length){ openConflictsModal(abertos); }
-    else {
-      document.getElementById('in-workdate').value = sessionWorkDate || todayISO();
-      show('modal-start');
+    conflitosAbertosCache = abertos;
+    renderConflictBadge();
+    if(abertos.length){
+      openConflictsModal(abertos);
+    } else if(conflictResolveCallback){
+      const cb = conflictResolveCallback;
+      conflictResolveCallback = null;
+      cb();
     }
   } catch(e){
     console.error(e);
@@ -1047,23 +1056,37 @@ function updatePendingSyncBadge(){
   if(n > 0){ el.textContent = `⏳ ${n} aguardando sincronizar`; el.classList.remove('hide'); }
   else { el.classList.add('hide'); }
 }
+let conflitosAbertosCache = [];
 async function checkConflictsProactively(){
   if(!currentFarm || isAdmin) return;
-  if(!document.getElementById('modal-conflict').classList.contains('hide')) return; // já está mostrando
   const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
-  if(abertos.length){
-    goScreen('home'); renderHome();
-    openConflictsModal(abertos);
+  conflitosAbertosCache = abertos;
+  renderConflictBadge();
+}
+function renderConflictBadge(){
+  const badge = document.getElementById('conflict-badge');
+  if(!badge) return;
+  if(conflitosAbertosCache.length){
+    document.getElementById('conflict-badge-text').textContent = `⚠ ${conflitosAbertosCache.length} conflito(s) de ID pendente(s) nessa fazenda`;
+    badge.classList.remove('hide');
+  } else {
+    badge.classList.add('hide');
   }
 }
+document.getElementById('btn-ver-conflitos').addEventListener('click', ()=>{
+  conflictResolveCallback = null;
+  if(conflitosAbertosCache.length) openConflictsModal(conflitosAbertosCache);
+});
 window.addEventListener('online', async ()=>{
   toast('✅ Conexão de volta — sincronizando dados.');
   await flushOutbox();
-  // assim que a internet voltar, checa na hora se apareceu conflito — interrompe o manejo até resolver
+  await flushDeleteOutbox();
+  // assim que a internet voltar, checa se apareceu conflito — só avisa, não interrompe o que você tá fazendo
   await checkConflictsProactively();
 });
 setInterval(async ()=>{
   await flushOutbox();
+  await flushDeleteOutbox();
   if(navigator.onLine) await checkConflictsProactively();
 }, 30000);
 
@@ -1356,6 +1379,19 @@ function checkForDraft(){
     if(!draft || !draft.data) return;
     const horasAtras = (Date.now() - (draft.savedAt||0)) / 3600000;
     if(horasAtras > 24){ clearDraft(); return; }
+
+    // proteção contra "animal fantasma": se esse rascunho é de um cadastro NOVO (não edição) e o
+    // animal já existe na lista local (já foi salvo antes da queda), o rascunho está desatualizado —
+    // descarta em vez de oferecer continuar, senão duplicaria o cadastro
+    if(!draft.editingId && draft.data.id){
+      const jaExiste = animals.some(a => String(a.id) === String(draft.data.id));
+      if(jaExiste){
+        clearDraft();
+        toast(`O animal ID ${draft.data.id} já estava salvo — rascunho antigo descartado.`);
+        return;
+      }
+    }
+
     if(confirm(`Encontramos um cadastro não finalizado (ID ${draft.data.id || '—'}, Ordem ${draft.data.ordem || '—'}) — provavelmente por queda de energia ou fechamento inesperado. Quer continuar de onde parou?`)){
       newWizard();
       wiz.data = { ...wiz.data, ...draft.data };
@@ -1495,6 +1531,7 @@ document.getElementById('btn-finalizar-operacao').addEventListener('click', asyn
 function renderHome(){
   document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Cadastrar fazenda";
   updatePendingSyncBadge();
+  renderConflictBadge();
   renderOperacaoCard();
   document.getElementById('stat-total').textContent = animals.length;
   document.getElementById('stat-pendente').textContent = animals.filter(a=>!a.confirmado).length;
@@ -1638,10 +1675,33 @@ function renderPendenteChecklist(){
             <input type="checkbox" class="item-check" data-id="${a.docId}" ${selectedPendIds.has(a.docId)?'checked':''}>
             <span>#${a.ordem} · ID ${a.id} · ${a.peso}kg</span>
           </label>
-          <span class="edit" data-editdest="${a.docId}">destino ✎</span>
+          <span style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+            <span class="edit" data-editdest="${a.docId}">destino ✎</span>
+            <span class="edit" data-delpend="${a.docId}" style="color:var(--alert);">excluir ✕</span>
+          </span>
         </div>`).join("")}
     </div>`;
   }).join("");
+
+  wrap.querySelectorAll('[data-delpend]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      const docId = el.dataset.delpend;
+      const a = animals.find(x=>x.docId===docId);
+      if(!a) return;
+      if(!confirm(`Excluir o animal #${a.ordem} · ID ${a.id}? Essa ação não pode ser desfeita.`)) return;
+      selectedPendIds.delete(docId);
+      animals = animals.filter(x=>x.docId!==docId);
+      toast("Animal excluído.");
+      addToDeleteOutbox(docId);
+      db.collection('animais').doc(docId).delete()
+        .then(()=> removeFromDeleteOutbox(docId))
+        .catch(()=>{ /* fica na fila, tenta de novo quando a conexão voltar */ });
+      renderPendenteResumo();
+      renderPendenteChecklist();
+      renderHome();
+    });
+  });
 
   wrap.querySelectorAll('.item-check').forEach(cb=>{
     cb.addEventListener('change', ()=>{
@@ -1749,22 +1809,26 @@ document.getElementById('ced-save').addEventListener('click', async ()=>{
   const docId = document.getElementById('conf-edit-destino-card').dataset.editingId;
   const novoDestino = document.getElementById('ced-destino-input').value.trim();
   if(!docId) return;
-  setLoading(true);
   try{
-    await db.collection('animais').doc(docId).update({ pasto: novoDestino });
-    if(novoDestino) await registrarDestinoExtra(novoDestino);
+    // atualiza local na hora — não espera o Firebase, funciona offline
     const idx = animals.findIndex(a=>a.docId===docId);
-    if(idx>-1) animals[idx].pasto = novoDestino; // atualiza local, sem reler a coleção
+    if(idx>-1) animals[idx].pasto = novoDestino;
     toast("Destino atualizado.");
     document.getElementById('conf-edit-destino-card').classList.add('hide');
     renderPendenteResumo();
     renderPendenteChecklist();
     renderConferidosView();
     renderHome();
+    // manda pro banco em segundo plano
+    addToOutbox(docId, { pasto: novoDestino });
+    db.collection('animais').doc(docId).update({ pasto: novoDestino })
+      .then(()=> removeFromOutbox(docId))
+      .catch(()=>{ /* fica na fila, tenta de novo quando a conexão voltar */ });
+    if(novoDestino) registrarDestinoExtra(novoDestino).catch(()=>{});
   } catch(e){
     console.error(e);
     toast("Erro ao atualizar destino.");
-  } finally { setLoading(false); }
+  }
 });
 
 function switchConfSubtab(which){
@@ -1792,7 +1856,7 @@ async function renderConferencia(){
   }
 }
 
-document.getElementById('btn-confirmar-lote').addEventListener('click', async ()=>{
+document.getElementById('btn-confirmar-lote').addEventListener('click', ()=>{
   const pend = animals.filter(a=> selectedPendIds.has(a.docId));
   const groups = {};
   pend.forEach(a=>{ const p = a.pasto || "Sem destino definido"; groups[p] = (groups[p]||0)+1; });
@@ -1802,44 +1866,47 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', async ()
   if(!p1 || !p2){ toast("Informe os dois conferentes."); return; }
   if(!confirm(`Confirmar liberação de ${pend.length} animal(is) selecionado(s)? Isso solta esse lote do curral de separação.`)) return;
 
-  setLoading(true);
-  try{
-    const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
-    const loteRef = db.collection('lotes').doc();
-    const batch = db.batch();
-    batch.set(loteRef, {
-      fazendaId: currentFarm.id,
-      data: todayISO(),
-      hora,
-      pessoa1: p1,
-      pessoa2: p2,
-      porPasto: groups,
-      totalAnimais: pend.length,
-      animalIds: pend.map(a=>a.docId),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy: currentUser.uid
+  const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  const loteRef = db.collection('lotes').doc();
+  const loteData = {
+    fazendaId: currentFarm.id,
+    data: todayISO(),
+    hora,
+    pessoa1: p1,
+    pessoa2: p2,
+    porPasto: groups,
+    totalAnimais: pend.length,
+    animalIds: pend.map(a=>a.docId),
+    createdAt: firebase.firestore.Timestamp.now(),
+    createdBy: currentUser.uid
+  };
+
+  // atualiza tudo local na hora — não espera o Firebase, funciona offline
+  selectedPendIds.clear();
+  pend.forEach(a=>{ a.confirmado = true; a.loteId = loteRef.id; });
+  lotes.unshift({ docId: loteRef.id, ...loteData });
+  toast(`Lote confirmado — ${pend.length} animal(is) liberado(s).`);
+  renderPendenteResumo();
+  renderPendenteChecklist();
+  switchConfSubtab('confirmados');
+  renderLotesHistorico();
+  renderHome();
+
+  // manda pro banco em segundo plano — se não conseguir agora, tenta de novo quando a conexão voltar
+  const idsParaConfirmar = pend.map(a=>a.docId);
+  idsParaConfirmar.forEach(docId => addToOutbox(docId, animals.find(a=>a.docId===docId)));
+  const batch = db.batch();
+  batch.set(loteRef, loteData);
+  pend.forEach(a=>{
+    batch.update(db.collection('animais').doc(a.docId), {
+      confirmado: true,
+      loteId: loteRef.id,
+      confirmadoEm: firebase.firestore.Timestamp.now()
     });
-    pend.forEach(a=>{
-      batch.update(db.collection('animais').doc(a.docId), {
-        confirmado: true,
-        loteId: loteRef.id,
-        confirmadoEm: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-    await batch.commit();
-    toast(`Lote confirmado — ${pend.length} animal(is) liberado(s).`);
-    selectedPendIds.clear();
-    pend.forEach(a=>{ a.confirmado = true; a.loteId = loteRef.id; }); // atualiza local, sem reler a coleção
-    await loadLotes();
-    renderPendenteResumo();
-    renderPendenteChecklist();
-    switchConfSubtab('confirmados');
-    renderLotesHistorico();
-    renderHome();
-  } catch(e){
-    console.error(e);
-    toast("Erro ao confirmar o lote.");
-  } finally { setLoading(false); }
+  });
+  batch.commit().then(()=>{
+    idsParaConfirmar.forEach(docId => removeFromOutbox(docId));
+  }).catch(()=>{ /* fica pendente — o Firestore/nossa fila tenta reenviar quando a conexão voltar */ });
 });
 
 /* ============================================================
@@ -1880,21 +1947,18 @@ document.getElementById('btn-add-pasto').addEventListener('click', ()=>{
   pastoRulesDraft.push({min:0, max:0, pasto:""});
   renderPastoRows();
 });
-document.getElementById('btn-save-pasto').addEventListener('click', async ()=>{
-  setLoading(true);
-  try{
-    const clean = pastoRulesDraft
-      .filter(r=> r.pasto && r.pasto.trim())
-      .sort((a,b)=>a.min-b.min);
-    await db.collection('fazendas').doc(currentFarm.id).update({ pastoRules: clean });
-    currentFarm.pastoRules = clean;
-    const idx = farms.findIndex(f=>f.id===currentFarm.id);
-    if(idx>-1) farms[idx].pastoRules = clean;
-    toast("Configurações salvas.");
-  } catch(e){
-    console.error(e);
-    toast("Erro ao salvar configurações.");
-  } finally { setLoading(false); }
+document.getElementById('btn-save-pasto').addEventListener('click', ()=>{
+  const clean = pastoRulesDraft
+    .filter(r=> r.pasto && r.pasto.trim())
+    .sort((a,b)=>a.min-b.min);
+  // atualiza local na hora — não espera o Firebase, funciona offline
+  currentFarm.pastoRules = clean;
+  const idx = farms.findIndex(f=>f.id===currentFarm.id);
+  if(idx>-1) farms[idx].pastoRules = clean;
+  toast("Configurações salvas.");
+  db.collection('fazendas').doc(currentFarm.id).update({ pastoRules: clean }).catch(()=>{
+    /* sem internet agora — o Firestore tenta reenviar sozinho quando a conexão voltar */
+  });
 });
 
 /* ============================================================
@@ -2098,6 +2162,10 @@ document.getElementById('btn-start-wizard').addEventListener('click', async ()=>
   if(navigator.onLine){
     const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
     if(abertos.length){
+      conflictResolveCallback = ()=>{
+        document.getElementById('in-workdate').value = sessionWorkDate || todayISO();
+        show('modal-start');
+      };
       openConflictsModal(abertos);
       return;
     }
@@ -2623,15 +2691,31 @@ function renderStepRevisar(){
   return el;
 }
 
-async function excluirAnimalAtual(){
+function getDeleteOutbox(){ try{ return JSON.parse(localStorage.getItem('auditaboi_delete_outbox') || '[]'); } catch(e){ return []; } }
+function setDeleteOutbox(list){ try{ localStorage.setItem('auditaboi_delete_outbox', JSON.stringify(list)); } catch(e){} }
+function addToDeleteOutbox(docId){ const l = getDeleteOutbox(); if(!l.includes(docId)) l.push(docId); setDeleteOutbox(l); }
+function removeFromDeleteOutbox(docId){ setDeleteOutbox(getDeleteOutbox().filter(id=>id!==docId)); }
+async function flushDeleteOutbox(){
+  for(const docId of getDeleteOutbox()){
+    try{
+      await raceTimeout(db.collection('animais').doc(docId).delete(), 5000, null).then(r=>{
+        if(r !== null) removeFromDeleteOutbox(docId);
+      });
+    } catch(e){ /* fica na fila, tenta de novo depois */ }
+  }
+}
+function excluirAnimalAtual(){
   if(!confirm("Excluir este cadastro? Essa ação não pode ser desfeita.")) return;
-  setLoading(true);
-  try{
-    await db.collection('animais').doc(wiz.editingId).delete();
-    animals = animals.filter(a=>a.docId!==wiz.editingId); // atualiza local, sem reler a coleção
-    toast("Cadastro excluído.");
-    goScreen('list'); renderList(); renderHome();
-  } finally { setLoading(false); }
+  const docId = wiz.editingId;
+  // some da tela na hora — não espera o Firebase, funciona offline
+  animals = animals.filter(a=>a.docId!==docId);
+  toast("Cadastro excluído.");
+  goScreen('list'); renderList(); renderHome();
+  // manda a exclusão de verdade em segundo plano
+  addToDeleteOutbox(docId);
+  db.collection('animais').doc(docId).delete()
+    .then(()=> removeFromDeleteOutbox(docId))
+    .catch(()=>{ /* fica na fila, tenta de novo quando a conexão voltar */ });
 }
 
 function descreverDuplicata(dup){
@@ -2674,6 +2758,8 @@ async function checkDuplicates(){
 
 async function salvarAnimal(){
   if(wiz.blockReason){ toast("Corrija a duplicidade antes de salvar."); return; }
+  if(wiz.salvando){ return; } // já está salvando — ignora clique/enter duplicado, evita cadastro fantasma repetido
+  wiz.salvando = true;
   const d = wiz.data;
   const payload = {
     fazendaId: currentFarm.id,
@@ -2736,6 +2822,11 @@ async function salvarAnimal(){
       if(navigator.onLine){
         const abertos = await getOpenConflicts(currentFarm.farmGroupKey);
         if(abertos.length){
+          conflictResolveCallback = ()=>{
+            newWizard();
+            wiz.data.ordem = nextOrdemForDate(sessionWorkDate || todayISO());
+            renderWizard();
+          };
           goScreen('home'); renderHome();
           openConflictsModal(abertos);
           return;
@@ -2749,7 +2840,7 @@ async function salvarAnimal(){
   }catch(e){
     console.error(e);
     toast("Erro ao salvar. Tente novamente.");
-  } finally { setLoading(false); }
+  } finally { wiz.salvando = false; setLoading(false); }
 }
 
 /* ============================================================
