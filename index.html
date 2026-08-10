@@ -692,6 +692,12 @@ body.login-mode #app{background:var(--ink);}
 
         <div class="section-title">Fazendas cadastradas</div>
         <div id="admin-fazendas-list"></div>
+
+        <div class="review-card" style="margin-top:24px;border-color:var(--alert);">
+          <div class="review-row"><span class="k" style="font-weight:900;color:var(--alert);">⚠ Zona de perigo</span></div>
+          <p class="page-sub" style="margin:6px 0 12px;">Apaga TODOS os animais, fazendas, retiros, lotes, conferências e conflitos cadastrados até agora — pra quando terminar a fase de teste e quiser começar do zero pra valer. As contas de auditores e do admin continuam, só os dados de auditoria são apagados. Não tem como desfazer.</p>
+          <button class="btn btn-secondary" id="btn-zerar-sistema" style="color:var(--alert);border-color:var(--alert);">🗑 Zerar sistema (apagar tudo)</button>
+        </div>
       </div>
 
       <!-- AUDITORES -->
@@ -3278,6 +3284,42 @@ function renderAdminFeed(lista){
 
 /* ---- auditores ---- */
 /* ---- fazendas (cadastro pelo admin) ---- */
+/* ---- zerar sistema (zona de perigo) ---- */
+async function apagarColecao(nome, onProgresso){
+  let apagados = 0;
+  while(true){
+    const snap = await db.collection(nome).limit(450).get();
+    if(snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach(d=> batch.delete(d.ref));
+    await batch.commit();
+    apagados += snap.size;
+    if(onProgresso) onProgresso(nome, apagados);
+  }
+  return apagados;
+}
+document.getElementById('btn-zerar-sistema').addEventListener('click', async ()=>{
+  const passo1 = confirm("Isso apaga TODOS os animais, fazendas, retiros, lotes, conferências e conflitos cadastrados até agora, de todas as fazendas. Não tem como desfazer.\n\nTem certeza que quer continuar?");
+  if(!passo1) return;
+  const digitado = prompt('Pra confirmar de vez, digite ZERAR (tudo maiúsculo):');
+  if(digitado !== 'ZERAR'){ toast('Cancelado — nada foi apagado.'); return; }
+  setLoading(true);
+  const resultEl = document.getElementById('admin-fazendas-list');
+  try{
+    const colecoes = ['animais','lotes','conflitos','operacoes','fazendas'];
+    for(const col of colecoes){
+      resultEl.innerHTML = `<div class="empty-state">Apagando ${col}...</div>`;
+      await apagarColecao(col);
+    }
+    toast('Sistema zerado! Todos os dados de auditoria foram apagados.');
+    adminFazendas = [];
+    await renderAdmin();
+  } catch(e){
+    console.error(e);
+    toast('Erro ao zerar o sistema — parte dos dados pode ter sido apagada. Confere e tenta de novo se precisar.');
+  } finally { setLoading(false); }
+});
+
 async function renderAdminFazendasList(){
   const wrap = document.getElementById('admin-fazendas-list');
   setLoading(true);
@@ -3524,16 +3566,9 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
     }
 
     resultEl.classList.remove('hide');
-    resultEl.innerHTML = `<div class="review-row"><span class="k">Verificando duplicidade...</span><span class="v">—</span></div>`;
+    resultEl.innerHTML = `<div class="review-row"><span class="k">Importando...</span><span class="v">—</span></div>`;
 
-    // carrega de uma vez só todos os IDs já existentes nessa fazenda (bem mais rápido que checar linha por linha)
-    const idsExistentesSnap = await getSafe(db.collection('animais').where('farmGroupKey','==',farmGroupKey), 20000);
-    const idsExistentes = new Set();
-    if(!idsExistentesSnap.uncertain){
-      idsExistentesSnap.docs.forEach(d=>{ const v = d.data().id; if(v) idsExistentes.add(String(v)); });
-    }
-
-    let importados = 0, duplicados = 0, semId = 0;
+    let importados = 0, semId = 0;
     const BATCH_MAX = 400;
     let batch = db.batch();
     let opsNoBatch = 0;
@@ -3542,8 +3577,6 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
       const row = rows[i];
       const idAnimal = String(row["ID"] || row["id"] || "").trim();
       if(!idAnimal){ semId++; continue; }
-      if(idsExistentes.has(idAnimal)){ duplicados++; continue; }
-      idsExistentes.add(idAnimal); // evita duplicar também dentro da própria planilha
 
       const ref = db.collection('animais').doc();
       batch.set(ref, {
@@ -3585,7 +3618,6 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
     resultEl.classList.remove('hide');
     resultEl.innerHTML = `
       <div class="review-row"><span class="k">Importados</span><span class="v">${importados}</span></div>
-      <div class="review-row"><span class="k">Duplicados (ignorados)</span><span class="v">${duplicados}</span></div>
       <div class="review-row"><span class="k">Sem ID (ignorados)</span><span class="v">${semId}</span></div>`;
     toast(`Operação importada: ${importados} animais.`);
     fileInput.value = "";
