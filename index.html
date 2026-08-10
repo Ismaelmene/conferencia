@@ -543,7 +543,13 @@ body.login-mode #app{background:var(--ink);}
       <button class="iconbtn" id="btn-conf-back">Início</button>
     </div>
     <div class="screen" style="padding-top:0;">
-      <div class="btn-row" style="margin-bottom:18px;">
+      <div class="search-bar">
+        <input type="text" id="search-conf-global" placeholder="Buscar animal por ID ou Ordem (pendente ou já conferido)...">
+      </div>
+      <button class="btn btn-secondary" id="btn-ids-duplicados" style="margin-bottom:16px;">🔁 Ver IDs duplicados</button>
+      <div id="conf-search-results" class="hide"></div>
+
+      <div class="btn-row" style="margin-bottom:18px;" id="conf-subtabs-row">
         <button class="btn btn-secondary sub-tab active" id="subtab-pendente">Pendentes</button>
         <button class="btn btn-secondary sub-tab" id="subtab-conferidos">Conferidos</button>
         <button class="btn btn-secondary sub-tab" id="subtab-confirmados">Lotes</button>
@@ -757,10 +763,13 @@ body.login-mode #app{background:var(--ink);}
   <!-- ============ MODAL: CONFLITO DE ID ============ -->
   <div id="modal-conflict" class="modal-overlay hide">
     <div class="modal-card" style="max-height:85vh;overflow-y:auto;">
-      <h1 class="page-title" style="margin-top:0;color:var(--alert);">⚠ Conflito de ID</h1>
-      <p class="page-sub">Dois retiros cadastraram o mesmo número enquanto estavam offline. Corrija pra liberar a auditoria — assim que alguém corrigir (você ou o outro auditor), libera pros dois.</p>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <h1 class="page-title" style="margin-top:0;color:var(--alert);">⚠ Conflito de ID</h1>
+        <button class="iconbtn" id="btn-conflict-close-x" style="font-size:20px;padding:2px 8px;">✕</button>
+      </div>
+      <p class="page-sub">Dois retiros cadastraram o mesmo número enquanto estavam offline. Corrija pra liberar a auditoria — assim que alguém corrigir (você ou o outro auditor), libera pros dois. Você pode fechar e mexer no resto do painel; só não dá pra iniciar auditoria sem corrigir.</p>
       <div id="conflict-list"></div>
-      <button class="btn btn-secondary" id="btn-conflict-later" style="margin-top:14px;">Corrigir depois (offline segue liberado)</button>
+      <button class="btn btn-secondary" id="btn-conflict-later" style="margin-top:14px;">Corrigir depois</button>
     </div>
   </div>
 
@@ -982,6 +991,7 @@ function openConflictsModal(conflitos){
   show('modal-conflict');
 }
 document.getElementById('btn-conflict-later').addEventListener('click', ()=> hide('modal-conflict'));
+document.getElementById('btn-conflict-close-x').addEventListener('click', ()=> hide('modal-conflict'));
 
 let resolvingConflict = null;
 let conflictResolveCallback = null; // o que fazer depois que TODOS os conflitos forem resolvidos (null = só fecha, sem ação)
@@ -1831,7 +1841,10 @@ document.getElementById('ced-save').addEventListener('click', async ()=>{
   }
 });
 
+let ultimaConfSubtab = 'pendente';
 function switchConfSubtab(which){
+  ultimaConfSubtab = which;
+  document.getElementById('conf-search-results').classList.add('hide');
   document.getElementById('conf-pendente-view').classList.toggle('hide', which!=='pendente');
   document.getElementById('conf-conferidos-view').classList.toggle('hide', which!=='conferidos');
   document.getElementById('conf-historico-view').classList.toggle('hide', which!=='confirmados');
@@ -1843,9 +1856,86 @@ document.getElementById('subtab-pendente').addEventListener('click', ()=> switch
 document.getElementById('subtab-conferidos').addEventListener('click', ()=>{ switchConfSubtab('conferidos'); renderConferidosView(); });
 document.getElementById('subtab-confirmados').addEventListener('click', ()=>{ switchConfSubtab('confirmados'); renderLotesHistorico(); });
 
+/* ---- busca global por ID / IDs duplicados (qualquer status, pendente ou já conferido) ---- */
+let modoBuscaConf = null; // null | 'busca' | 'duplicados'
+function toggleConfSearchMode(ativar){
+  document.getElementById('conf-subtabs-row').classList.toggle('hide', ativar);
+  document.getElementById('conf-search-results').classList.toggle('hide', !ativar);
+  if(ativar){
+    ['conf-pendente-view','conf-conferidos-view','conf-historico-view'].forEach(id=> document.getElementById(id).classList.add('hide'));
+  } else {
+    switchConfSubtab(ultimaConfSubtab);
+  }
+}
+function renderConfSearchResults(){
+  const wrap = document.getElementById('conf-search-results');
+  let lista, titulo;
+  if(modoBuscaConf === 'duplicados'){
+    const contagem = {};
+    animals.forEach(a=>{ if(a.id) contagem[a.id] = (contagem[a.id]||0) + 1; });
+    lista = animals.filter(a => a.id && contagem[a.id] > 1);
+    titulo = `IDs duplicados nesse retiro (${lista.length} cadastros envolvidos)`;
+  } else {
+    const q = document.getElementById('search-conf-global').value.trim().toLowerCase();
+    lista = animals.filter(a =>
+      String(a.id||"").toLowerCase().includes(q) ||
+      String(a.ordem||"").toLowerCase().includes(q) ||
+      String(a.idAntigo||"").toLowerCase().includes(q)
+    );
+    titulo = `Resultado da busca (${lista.length})`;
+  }
+  lista = lista.slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+  if(!lista.length){
+    wrap.innerHTML = `<div class="section-title">${titulo}</div><div class="empty-state">Nenhum animal encontrado.</div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="section-title">${titulo}</div>` + lista.map(a=>`
+    <div class="animal-row" style="cursor:default;">
+      <div class="id-block">
+        <div class="tagid">#${a.ordem} · ID ${a.id}</div>
+        <div class="meta">${a.categoria||"—"} · ${a.raca||"—"}${a.pasto?" · 📍"+a.pasto:""} · ${formatDataBR(a.dataTrabalho)}${a.confirmado?' · 🔒 conferido':' · ⏳ pendente'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        ${!a.confirmado ? `<span class="edit" data-editdest2="${a.docId}">destino ✎</span>` : ''}
+        <span class="edit" data-delglobal="${a.docId}" style="color:var(--alert);">excluir ✕</span>
+      </div>
+    </div>`).join("");
+  wrap.querySelectorAll('[data-editdest2]').forEach(el=> el.addEventListener('click', ()=> openEditDestino(el.dataset.editdest2)));
+  wrap.querySelectorAll('[data-delglobal]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const docId = el.dataset.delglobal;
+      const a = animals.find(x=>x.docId===docId);
+      if(!a) return;
+      if(!confirm(`Excluir o animal #${a.ordem} · ID ${a.id}? Essa ação não pode ser desfeita.`)) return;
+      selectedPendIds.delete(docId);
+      animals = animals.filter(x=>x.docId!==docId);
+      toast("Animal excluído.");
+      addToDeleteOutbox(docId);
+      db.collection('animais').doc(docId).delete().then(()=> removeFromDeleteOutbox(docId)).catch(()=>{});
+      renderConfSearchResults();
+      renderPendenteResumo(); renderPendenteChecklist(); renderConferidosView(); renderHome();
+    });
+  });
+}
+document.getElementById('search-conf-global').addEventListener('input', ()=>{
+  const temTexto = document.getElementById('search-conf-global').value.trim().length > 0;
+  modoBuscaConf = temTexto ? 'busca' : null;
+  toggleConfSearchMode(temTexto);
+  if(temTexto) renderConfSearchResults();
+});
+document.getElementById('btn-ids-duplicados').addEventListener('click', ()=>{
+  document.getElementById('search-conf-global').value = "";
+  modoBuscaConf = 'duplicados';
+  toggleConfSearchMode(true);
+  renderConfSearchResults();
+});
+
 async function renderConferencia(){
   if(!currentFarm){ toast("Selecione uma fazenda primeiro."); goScreen('home'); return; }
   await loadLotes();
+  document.getElementById('search-conf-global').value = "";
+  modoBuscaConf = null;
+  toggleConfSearchMode(false);
   switchConfSubtab('pendente');
   selectedPendIds.clear();
   renderPendenteResumo();
