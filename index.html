@@ -978,6 +978,29 @@ async function getOpenConflicts(farmGroupKey){
   return snap.docs.map(d=>({ docId:d.id, ...d.data() }));
 }
 
+// quando um animal é excluído, fecha automaticamente qualquer conflito de ID aberto que envolvia ele
+// (excluir um dos dois duplicados já resolve o problema — não precisa passar pela tela de "corrigir")
+async function resolverConflitosDoAnimal(docId){
+  try{
+    const snap = await getSafe(db.collection('conflitos').where('animalIds','array-contains', docId), 6000);
+    if(snap.uncertain) return;
+    const abertos = snap.docs.filter(d => d.data().status === 'aberto');
+    for(const d of abertos){
+      await db.collection('conflitos').doc(d.id).update({
+        status: 'resolvido',
+        resolvedAt: firebase.firestore.Timestamp.now(),
+        resolvedBy: currentAuditorNome || currentUser.email,
+        explicacao: 'Resolvido automaticamente — um dos cadastros duplicados foi excluído.',
+        novoValor: null
+      });
+    }
+    if(abertos.length && currentFarm){
+      conflitosAbertosCache = await getOpenConflicts(currentFarm.farmGroupKey);
+      renderConflictBadge();
+    }
+  } catch(e){ console.warn('Erro ao resolver conflito após exclusão:', e); }
+}
+
 function openConflictsModal(conflitos){
   const wrap = document.getElementById('conflict-list');
   wrap.innerHTML = conflitos.map(c=>{
@@ -1477,7 +1500,14 @@ async function loadAnimals(){
   if(!currentFarm) { animals = []; return; }
   setLoading(true);
   try{
-    const snap = await getSafe(db.collection('animais').where('fazendaId','==',currentFarm.id));
+    let snap = await getSafe(db.collection('animais').where('fazendaId','==',currentFarm.id), 8000);
+    if(snap.uncertain){
+      // retiros grandes podem demorar mais — dá mais uma chance com prazo maior antes de desistir
+      snap = await getSafe(db.collection('animais').where('fazendaId','==',currentFarm.id), 15000);
+    }
+    if(snap.uncertain){
+      toast('⚠ Não deu pra carregar a lista completa agora (conexão lenta/instável) — os números podem estar incompletos. Tenta de novo assim que a internet melhorar.');
+    }
     animals = snap.docs.map(d=>({...d.data(), docId:d.id}));
   } finally { setLoading(false); }
 }
@@ -1722,6 +1752,7 @@ function renderPendenteChecklist(){
       db.collection('animais').doc(docId).delete()
         .then(()=> removeFromDeleteOutbox(docId))
         .catch(()=>{ /* fica na fila, tenta de novo quando a conexão voltar */ });
+      resolverConflitosDoAnimal(docId);
       renderPendenteResumo();
       renderPendenteChecklist();
       renderHome();
@@ -1786,8 +1817,10 @@ function renderLotesHistorico(){
     return;
   }
   const medias = lotes.map(l=> ({ lote: l, media: pesoMedioDoLote(l) }));
-  const geralValidos = medias.filter(m=>m.media>0).map(m=>m.media);
-  const mediaGeral = geralValidos.length ? Math.round((geralValidos.reduce((a,b)=>a+b,0)/geralValidos.length)*10)/10 : 0;
+  // média geral ponderada por animal (mesmo cálculo da Home) — não é a média das médias dos lotes,
+  // que fica errada quando os lotes têm tamanhos diferentes
+  const pesosGeral = animals.filter(a=>a.confirmado).map(a=>Number(a.peso)||0).filter(p=>p>0);
+  const mediaGeral = pesosGeral.length ? Math.round((pesosGeral.reduce((a,b)=>a+b,0)/pesosGeral.length)*10)/10 : 0;
   document.getElementById('lote-peso-medio-geral').textContent = mediaGeral ? mediaGeral+' kg' : "—";
 
   // gráfico de barras: peso médio por lote (mais recente primeiro fica mais claro ordenado do mais antigo pro mais novo)
@@ -1963,6 +1996,7 @@ function renderConfSearchResults(){
       toast("Animal excluído.");
       addToDeleteOutbox(docId);
       db.collection('animais').doc(docId).delete().then(()=> removeFromDeleteOutbox(docId)).catch(()=>{});
+      resolverConflitosDoAnimal(docId);
       renderConfSearchResults();
       renderPendenteResumo(); renderPendenteChecklist(); renderConferidosView(); renderHome();
     });
@@ -2867,6 +2901,7 @@ function excluirAnimalAtual(){
   db.collection('animais').doc(docId).delete()
     .then(()=> removeFromDeleteOutbox(docId))
     .catch(()=>{ /* fica na fila, tenta de novo quando a conexão voltar */ });
+  resolverConflitosDoAnimal(docId);
 }
 
 function descreverDuplicata(dup){
@@ -3430,6 +3465,9 @@ function renderBarChartForExport(titulo, labels, data){
 
 async function drawPesoLotePage(doc, spec){
   const pageW = 297, pageH = 210, marginX = 14;
+  const totalLotes = spec.labels.length;
+  const mediaGeral = spec.data.length ? Math.round((spec.data.reduce((a,b)=>a+b,0)/spec.data.length)*10)/10 : 0;
+
   doc.setFont(undefined,'bold'); doc.setFontSize(21); doc.setTextColor(24,38,25);
   doc.text(spec.titulo.toUpperCase(), marginX, 18);
   doc.setDrawColor(185,121,63); doc.setLineWidth(1.3);
@@ -3437,19 +3475,88 @@ async function drawPesoLotePage(doc, spec){
   doc.setFont(undefined,'normal'); doc.setFontSize(10.5); doc.setTextColor(90,90,90);
   doc.text("Evolução do peso médio a cada lote confirmado, do mais antigo pro mais recente.", marginX, 28);
 
-  if(spec.labels.length){
-    const { imgData, ratio } = await renderBarChartForExport(spec.titulo, spec.labels, spec.data);
-    let w = pageW - marginX*2, h = w/ratio;
-    if(h > 130) { h = 130; w = h*ratio; }
-    doc.addImage(imgData, 'PNG', (pageW-w)/2, 34, w, h);
-
-    const media = spec.data.length ? Math.round((spec.data.reduce((a,b)=>a+b,0)/spec.data.length)*10)/10 : 0;
-    doc.setFont(undefined,'bold'); doc.setFontSize(11); doc.setTextColor(24,38,25);
-    doc.text(`Média geral: ${media} kg  ·  ${spec.labels.length} lote(s) confirmado(s)`, marginX, 34+h+10);
-  } else {
+  if(!totalLotes){
     doc.setFontSize(11); doc.setTextColor(120,120,120);
     doc.text("Nenhum lote confirmado nesse período/retiros selecionados.", marginX, 50);
+    doc.setFontSize(8); doc.setTextColor(130,130,130); doc.setFont(undefined,'normal');
+    doc.text(`Data: ${formatDataBR(todayISO())}`, pageW-marginX, pageH-8, { align:'right' });
+    return;
   }
+
+  // gráfico de barras à esquerda (faz mais sentido pra evolução no tempo do que pizza)
+  const chartAreaY = 34, chartAreaH = 118;
+  const { imgData, ratio } = await renderBarChartForExport(spec.titulo, spec.labels, spec.data);
+  let chartW = 148, chartH = chartW / ratio;
+  if(chartH > chartAreaH){ chartH = chartAreaH; chartW = chartH * ratio; }
+  doc.addImage(imgData, 'PNG', marginX, chartAreaY, chartW, chartH);
+
+  // tabela à direita — lote e peso médio, com linha de média geral (mesmo padrão das outras páginas)
+  const tableX = marginX + 156;
+  const tableW = pageW - tableX - marginX;
+  doc.autoTable({
+    startY: chartAreaY,
+    margin: { left: tableX },
+    tableWidth: tableW,
+    head: [['Lote', 'Peso médio (kg)']],
+    body: spec.labels.map((lbl,i)=>[lbl, String(spec.data[i])]),
+    foot: [['MÉDIA GERAL', String(mediaGeral)]],
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 2.6, valign:'middle', lineColor:[216,203,169], lineWidth:0.3 },
+    headStyles: { fillColor:[24,38,25], textColor:255, fontStyle:'bold', fontSize:9 },
+    footStyles: { fillColor:[24,38,25], textColor:255, fontStyle:'bold' },
+    columnStyles: { 1:{halign:'right'} }
+  });
+
+  // 3 blocos de resumo embaixo — mesmo padrão visual dos outros gráficos
+  const boxY = Math.max(chartAreaY + chartAreaH + 8, (doc.lastAutoTable ? doc.lastAutoTable.finalY : chartAreaY) + 8);
+  const boxH = 46, gap = 6;
+  const boxW = (pageW - marginX*2 - gap*2) / 3;
+
+  function box(x, titulo){
+    doc.setDrawColor(216,203,169); doc.setLineWidth(0.4);
+    doc.roundedRect(x, boxY, boxW, boxH, 2, 2, 'S');
+    doc.setFillColor(24,38,25);
+    doc.roundedRect(x, boxY, boxW, 9, 2, 2, 'F');
+    doc.rect(x, boxY+4.5, boxW, 4.5, 'F');
+    doc.setFont(undefined,'bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
+    doc.text(titulo, x+4, boxY+6);
+  }
+
+  box(marginX, 'RESUMO GERAL');
+  doc.setFont(undefined,'bold'); doc.setFontSize(15); doc.setTextColor(24,38,25);
+  doc.text(String(totalLotes), marginX + boxW*0.25, boxY+22, {align:'center'});
+  doc.text(String(mediaGeral), marginX + boxW*0.75, boxY+22, {align:'center'});
+  doc.setFont(undefined,'normal'); doc.setFontSize(6.6); doc.setTextColor(90,90,90);
+  doc.text('LOTES CONFIRMADOS', marginX + boxW*0.25, boxY+28, {align:'center'});
+  doc.text('MÉDIA GERAL (KG)', marginX + boxW*0.75, boxY+28, {align:'center'});
+
+  const x2 = marginX + boxW + gap;
+  box(x2, 'DESTAQUES');
+  const comIndice = spec.labels.map((lbl,i)=>({lbl, val:spec.data[i]}));
+  const maisPesado = comIndice.reduce((m,x)=> x.val>m.val?x:m, comIndice[0]);
+  const maisLeve = comIndice.reduce((m,x)=> x.val<m.val?x:m, comIndice[0]);
+  const destaques = [
+    `Lote mais pesado: ${maisPesado.lbl} — ${maisPesado.val} kg.`,
+    `Lote mais leve: ${maisLeve.lbl} — ${maisLeve.val} kg.`,
+    totalLotes>1 ? `Variação entre o mais leve e o mais pesado: ${Math.round((maisPesado.val-maisLeve.val)*10)/10} kg.` : null
+  ].filter(Boolean);
+  doc.setFontSize(7.4); doc.setTextColor(50,50,50); doc.setFont(undefined,'normal');
+  let dy = boxY+13;
+  destaques.forEach(txt=>{
+    const linhas = doc.splitTextToSize(txt, boxW-9);
+    doc.text('•', x2+3, dy);
+    doc.text(linhas, x2+6.5, dy);
+    dy += linhas.length*3.6 + 2.4;
+  });
+
+  const x3 = x2 + boxW + gap;
+  box(x3, 'OBSERVAÇÕES');
+  doc.setFontSize(7.4); doc.setTextColor(50,50,50); doc.setFont(undefined,'normal');
+  const obsTxt = doc.splitTextToSize(
+    `Peso médio calculado a partir do peso individual de cada animal do lote na hora da conferência. Lotes em ordem cronológica, do mais antigo pro mais recente.`,
+    boxW-8
+  );
+  doc.text(obsTxt, x3+4, boxY+15);
 
   doc.setFontSize(8); doc.setTextColor(130,130,130); doc.setFont(undefined,'normal');
   doc.text(`Data: ${formatDataBR(todayISO())}`, pageW-marginX, pageH-8, { align:'right' });
