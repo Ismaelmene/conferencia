@@ -4061,8 +4061,17 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
     }
 
     const farmGroupKey = slugifyFarmName(fazenda);
-    // garante que existe um doc de fazenda/retiro pra essa operação
-    let fazendaDoc = adminFazendas.find(f=>(f.farmGroupKey||f.id)===farmGroupKey && (f.retiro||"")===retiro);
+    const retiroNorm = normTxt(retiro);
+
+    // recarrega a lista de fazendas mais atual antes de decidir (evita duplicar por causa de cache velho)
+    try{
+      const snapFazendas = await getSafe(db.collection('fazendas'), 8000);
+      if(!snapFazendas.uncertain) adminFazendas = snapFazendas.docs.map(d=>({ id:d.id, ...d.data() }));
+    } catch(e){ /* segue com o que já tinha em memória */ }
+
+    // garante que existe um doc de fazenda/retiro pra essa operação — reaproveita o retiro já
+    // existente do auditor mesmo se o nome tiver sido digitado com espaço/maiúscula diferente
+    let fazendaDoc = adminFazendas.find(f=> (f.farmGroupKey||slugifyFarmName(f.nome||"")) === farmGroupKey && normTxt(f.retiro||"") === retiroNorm);
     let fazendaId;
     if(fazendaDoc){
       fazendaId = fazendaDoc.id;
