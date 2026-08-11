@@ -4268,9 +4268,9 @@ function carregarEmbarqueLocal(){
 function renderEmbarque(){
   const totalAnimais = embarqueList.length;
   const pesoTotalKg = embarqueList.reduce((a,b)=> a + (Number(b.peso)||0), 0);
-  const pesoTotalArroba = pesoTotalKg / 15;
+  const pesoTotalArroba = pesoTotalKg / 30;
   const pesoMedioKg = totalAnimais ? pesoTotalKg / totalAnimais : 0;
-  const pesoMedioArroba = pesoMedioKg / 15;
+  const pesoMedioArroba = pesoMedioKg / 30;
   document.getElementById('emb-total-animais').textContent = totalAnimais;
   document.getElementById('emb-peso-total-kg').textContent = Math.round(pesoTotalKg*10)/10;
   document.getElementById('emb-peso-total-arroba').textContent = Math.round(pesoTotalArroba*100)/100;
