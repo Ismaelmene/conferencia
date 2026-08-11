@@ -475,6 +475,11 @@ body.login-mode #app{background:var(--ink);}
         <button class="btn btn-primary" id="btn-start-wizard">▶ Iniciar auditoria</button>
       </div>
 
+      <div class="cta-main" style="background:var(--grass-deep);margin-bottom:14px;">
+        <div class="lbl">Gado pra vender</div>
+        <button class="btn btn-primary" id="btn-start-embarque" style="background:var(--hide);">🚛 Iniciar embarque</button>
+      </div>
+
       <div class="review-card hide" id="operacao-card" style="margin-bottom:14px;">
         <div class="review-row"><span class="k">Operação de hoje</span><span class="v" id="operacao-status">—</span></div>
         <div class="review-row"><span class="k">Início</span><span class="v" id="operacao-inicio">—</span></div>
@@ -640,6 +645,39 @@ body.login-mode #app{background:var(--ink);}
       <button data-target="list"><div class="dot"></div>Rebanho</button>
       <button data-target="conferencia"><div class="dot"></div>✅ Conferência</button>
       <button data-target="config" class="active"><div class="dot"></div>⚙ Config</button>
+    </div>
+  </div>
+
+  <!-- ============ EMBARQUE (teste rápido — pode remover depois) ============ -->
+  <div id="screen-embarque" class="screen hide">
+    <div class="topbar">
+      <div class="brand"><span class="tag"></span>Embarque</div>
+      <button class="iconbtn" id="btn-embarque-close">Início</button>
+    </div>
+    <div class="screen" style="padding-top:0;">
+      <div class="grid2" style="margin-bottom:10px;">
+        <div class="stat-card"><div class="num" id="emb-total-animais">0</div><div class="lbl">Animais embarcados</div></div>
+        <div class="stat-card"><div class="num" id="emb-peso-total-kg">0</div><div class="lbl">Peso total (kg)</div></div>
+        <div class="stat-card"><div class="num" id="emb-peso-medio-kg">0</div><div class="lbl">Peso médio (kg)</div></div>
+        <div class="stat-card"><div class="num" id="emb-peso-medio-arroba">0</div><div class="lbl">Peso médio (@)</div></div>
+      </div>
+      <div class="stat-card" style="margin-bottom:18px;text-align:center;">
+        <div class="num" id="emb-peso-total-arroba">0</div><div class="lbl">Peso total (@)</div>
+      </div>
+
+      <div class="field">
+        <label>Número do brinco</label>
+        <input type="text" id="emb-brinco" placeholder="Ex: 1024">
+      </div>
+      <div class="field">
+        <label>Peso (kg)</label>
+        <input type="number" id="emb-peso" inputmode="decimal" placeholder="Ex: 480">
+      </div>
+      <button class="btn btn-primary" id="btn-emb-salvar" style="margin-bottom:22px;">+ Adicionar</button>
+
+      <div class="section-title">Animais embarcados</div>
+      <div id="emb-lista"></div>
+      <button class="btn btn-ghost" id="btn-emb-limpar" style="color:var(--alert);margin-top:16px;">🗑 Limpar embarque</button>
     </div>
   </div>
 
@@ -1302,7 +1340,7 @@ function toast(msg){
   setTimeout(()=>t.classList.add('hide'), 2200);
 }
 function goScreen(name){
-  ['login','home','list','wizard','config','conferencia','admin'].forEach(s=>hide('screen-'+s));
+  ['login','home','list','wizard','config','conferencia','admin','embarque'].forEach(s=>hide('screen-'+s));
   show('screen-'+name);
   document.body.classList.toggle('login-mode', name==='login');
 }
@@ -4214,6 +4252,82 @@ playBrandSound();
 ['click','touchstart','keydown'].forEach(ev=>{
   window.addEventListener(ev, ()=> playBrandSound(), { once:true, passive:true });
 });
+
+/* ============================================================
+   EMBARQUE — teste rápido e simples (brinco + peso), separado do
+   resto do sistema. Pode ser removido inteiro depois sem afetar nada.
+   ============================================================ */
+let embarqueList = [];
+function embarqueStorageKey(){ return `auditaboi_embarque_${currentFarm ? currentFarm.id : 'geral'}`; }
+function salvarEmbarqueLocal(){
+  try{ localStorage.setItem(embarqueStorageKey(), JSON.stringify(embarqueList)); } catch(e){}
+}
+function carregarEmbarqueLocal(){
+  try{ embarqueList = JSON.parse(localStorage.getItem(embarqueStorageKey()) || '[]'); } catch(e){ embarqueList = []; }
+}
+function renderEmbarque(){
+  const totalAnimais = embarqueList.length;
+  const pesoTotalKg = embarqueList.reduce((a,b)=> a + (Number(b.peso)||0), 0);
+  const pesoTotalArroba = pesoTotalKg / 15;
+  const pesoMedioKg = totalAnimais ? pesoTotalKg / totalAnimais : 0;
+  const pesoMedioArroba = pesoMedioKg / 15;
+  document.getElementById('emb-total-animais').textContent = totalAnimais;
+  document.getElementById('emb-peso-total-kg').textContent = Math.round(pesoTotalKg*10)/10;
+  document.getElementById('emb-peso-total-arroba').textContent = Math.round(pesoTotalArroba*100)/100;
+  document.getElementById('emb-peso-medio-kg').textContent = totalAnimais ? Math.round(pesoMedioKg*10)/10 : '0';
+  document.getElementById('emb-peso-medio-arroba').textContent = totalAnimais ? Math.round(pesoMedioArroba*100)/100 : '0';
+
+  const wrap = document.getElementById('emb-lista');
+  if(!embarqueList.length){ wrap.innerHTML = `<div class="empty-state">Nenhum animal embarcado ainda.</div>`; return; }
+  wrap.innerHTML = embarqueList.map((e,idx)=>`
+    <div class="animal-row" style="cursor:default;">
+      <div class="id-block"><div class="tagid">Brinco ${e.brinco}</div></div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div class="peso">${e.peso}<span style="font-size:11px;font-weight:600;"> kg</span></div>
+        <span class="edit" data-delemb="${idx}" style="color:var(--alert);">✕</span>
+      </div>
+    </div>`).reverse().join("");
+  wrap.querySelectorAll('[data-delemb]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      embarqueList.splice(Number(el.dataset.delemb), 1);
+      salvarEmbarqueLocal();
+      renderEmbarque();
+    });
+  });
+}
+function adicionarEmbarque(){
+  const brincoEl = document.getElementById('emb-brinco');
+  const pesoEl = document.getElementById('emb-peso');
+  const brinco = brincoEl.value.trim();
+  const peso = Number(pesoEl.value);
+  if(!brinco){ toast('Digite o número do brinco.'); brincoEl.focus(); return; }
+  if(!peso || peso<=0){ toast('Digite um peso válido.'); pesoEl.focus(); return; }
+  embarqueList.push({ brinco, peso });
+  salvarEmbarqueLocal();
+  renderEmbarque();
+  brincoEl.value = ""; pesoEl.value = "";
+  brincoEl.focus();
+}
+document.getElementById('btn-emb-salvar').addEventListener('click', adicionarEmbarque);
+document.getElementById('emb-brinco').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('emb-peso').focus(); }
+});
+document.getElementById('emb-peso').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); adicionarEmbarque(); }
+});
+document.getElementById('btn-emb-limpar').addEventListener('click', ()=>{
+  if(!confirm('Limpar todos os animais desse embarque? Não tem como desfazer.')) return;
+  embarqueList = [];
+  salvarEmbarqueLocal();
+  renderEmbarque();
+});
+document.getElementById('btn-start-embarque').addEventListener('click', ()=>{
+  carregarEmbarqueLocal();
+  goScreen('embarque');
+  renderEmbarque();
+  setTimeout(()=> document.getElementById('emb-brinco').focus(), 50);
+});
+document.getElementById('btn-embarque-close').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
 
 /* ---------- tela de abertura (logo) — some depois de 3s ---------- */
 setTimeout(()=>{
