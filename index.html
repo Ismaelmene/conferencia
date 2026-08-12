@@ -358,6 +358,19 @@ body.login-mode #app{background:var(--ink);}
   background:var(--dust);width:100%;padding:22px 20px calc(22px + env(safe-area-inset-bottom));
   border-radius:18px 18px 0 0;
 }
+.scale-debug-btn{
+  display:block;width:100%;height:130px;overflow-y:auto;white-space:pre-wrap;
+  border:0;border-radius:9px;background:#182619;color:#c8f0c8;padding:12px;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.45;
+  text-align:left;cursor:pointer;
+}
+.scale-debug-btn:focus-visible{outline:3px solid var(--hide);outline-offset:3px;}
+.scale-debug-modal-card{max-width:920px;}
+.scale-debug-full{
+  margin:0;max-height:68vh;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  background:#182619;color:#c8f0c8;padding:14px;border-radius:9px;
+  font:12px/1.5 'IBM Plex Mono',monospace;
+}
 
 /* ================= DESKTOP ================= */
 @media (min-width: 860px){
@@ -652,9 +665,9 @@ body.login-mode #app{background:var(--ink);}
       <button class="btn btn-secondary" id="btn-conectar-balanca">🔵 Conectar por Bluetooth</button>
       <div id="scale-status" style="margin-top:10px;padding:10px 13px;border-radius:9px;background:var(--dust-deep);font-size:12.5px;font-weight:700;color:var(--ink-soft);">Desconectada</div>
 
-      <div class="section-title" style="margin-top:18px;">Diagnóstico (o que a balança está mandando)</div>
-      <p class="page-sub" style="margin-top:-6px;">Ajuda a "traduzir" o formato certo — se o peso não estiver aparecendo automático, manda um print dessa caixa aqui embaixo.</p>
-      <div id="scale-debug" style="background:#182619;color:#c8f0c8;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:12px;border-radius:9px;height:130px;overflow-y:auto;white-space:pre-wrap;">Nenhum dado recebido ainda.</div>
+      <div class="section-title" style="margin-top:18px;">Diagnóstico de erros da balança</div>
+      <p class="page-sub" style="margin-top:-6px;">Aqui aparecem somente falhas de comunicação ou leituras que não puderam ser entendidas. Clique para ampliar e enviar um print, se precisar.</p>
+      <button id="scale-debug" class="scale-debug-btn" type="button" aria-label="Abrir diagnóstico de erros em tamanho maior" title="Clique para abrir em tamanho maior">Nenhum erro registrado.</button>
     </div>
     <div class="nav-tabs">
       <button data-target="home"><div class="dot"></div>Início</button>
@@ -900,7 +913,16 @@ body.login-mode #app{background:var(--ink);}
     <div style="font-family:'Archivo Expanded',sans-serif;font-weight:900;font-size:32px;margin:4px 0 12px;" id="scale-popup-valor">—</div>
     <div class="btn-row">
       <button class="btn btn-secondary" id="btn-scale-ignorar">Ignorar</button>
-      <button class="btn btn-primary" id="btn-scale-usar" style="background:var(--go-green);">Usar este peso</button>
+      <button class="btn btn-primary" id="btn-scale-usar" style="background:var(--go-green);">OK — registrar peso</button>
+    </div>
+  </div>
+
+  <div id="scale-debug-modal" class="modal-overlay hide" role="dialog" aria-modal="true" aria-labelledby="scale-debug-title" style="z-index:350;">
+    <div class="modal-card scale-debug-modal-card">
+      <h2 id="scale-debug-title" style="margin:0 0 6px;font-family:'Archivo Expanded',sans-serif;font-size:19px;">Diagnóstico da balança</h2>
+      <p class="page-sub" style="margin:0 0 14px;">Envie um print desta tela se houver erro ou o peso não aparecer.</p>
+      <pre id="scale-debug-expanded" class="scale-debug-full">Nenhum erro registrado.</pre>
+      <button class="btn btn-primary" id="btn-fechar-debug" type="button" style="margin-top:14px;">Fechar</button>
     </div>
   </div>
 
@@ -4404,6 +4426,9 @@ let scaleChar = null;
 let scaleBuffer = '';
 let pesoCapturadoAtual = null;
 let proximoPesoPreCarregado = null; // usado quando a balança lê um peso fora do wizard (ex: na Home)
+let ultimoPesoConfirmado = null;
+let ultimoPesoIgnorado = null;
+let ultimoPesoIgnoradoEm = 0;
 
 // perfis Bluetooth (BLE) comuns em módulos usados nesse tipo de indicador — tenta um por um
 const PERFIS_BLE_CANDIDATOS = [
@@ -4412,18 +4437,36 @@ const PERFIS_BLE_CANDIDATOS = [
   { nome:'Weight Scale Service padrão', servico:'0000181d-0000-1000-8000-00805f9b34fb', notify:'00002a9d-0000-1000-8000-00805f9b34fb' }
 ];
 
-function logDebug(msg){
+function logErroBalanca(msg){
   console.log('[Balança]', msg); // também aparece no F12 → Console do navegador
   const el = document.getElementById('scale-debug');
   if(!el) return;
   const hora = new Date().toLocaleTimeString('pt-BR');
-  if(el.textContent === 'Nenhum dado recebido ainda.') el.textContent = '';
+  if(el.textContent === 'Nenhum erro registrado.') el.textContent = '';
   let linhas = el.textContent.split('\n').filter(Boolean);
   linhas.push(`[${hora}] ${msg}`);
   if(linhas.length > 40) linhas = linhas.slice(-40); // mantém só as últimas 40 linhas — evita crescer sem parar
   el.textContent = linhas.join('\n');
   el.scrollTop = el.scrollHeight;
 }
+
+// A caixa pequena abre em tela grande para facilitar o print e a identificação
+// do protocolo de cada indicador.
+const scaleDebugEl = document.getElementById('scale-debug');
+const scaleDebugModalEl = document.getElementById('scale-debug-modal');
+const scaleDebugExpandedEl = document.getElementById('scale-debug-expanded');
+function abrirDiagnosticoBalanca(){
+  scaleDebugExpandedEl.textContent = scaleDebugEl.textContent;
+  scaleDebugModalEl.classList.remove('hide');
+  scaleDebugExpandedEl.scrollTop = scaleDebugExpandedEl.scrollHeight;
+}
+scaleDebugEl.addEventListener('click', abrirDiagnosticoBalanca);
+document.getElementById('btn-fechar-debug').addEventListener('click', ()=>{
+  scaleDebugModalEl.classList.add('hide');
+});
+scaleDebugModalEl.addEventListener('click', (e)=>{
+  if(e.target === scaleDebugModalEl) scaleDebugModalEl.classList.add('hide');
+});
 
 document.getElementById('scale-brand-select').value = localStorage.getItem('auditaboi_scale_brand') || 'toledo';
 document.getElementById('scale-brand-select').addEventListener('change', (e)=>{
@@ -4433,20 +4476,17 @@ document.getElementById('scale-brand-select').addEventListener('change', (e)=>{
 document.getElementById('btn-conectar-balanca').addEventListener('click', async ()=>{
   if(!('bluetooth' in navigator)){
     toast('Esse navegador não suporta Bluetooth — usa Chrome ou Edge, no computador ou Android.');
-    logDebug('❌ navigator.bluetooth não existe nesse navegador.');
+    logErroBalanca('❌ Este navegador não oferece suporte a Bluetooth.');
     return;
   }
   try{
-    logDebug('Abrindo a lista de dispositivos Bluetooth próximos...');
     scaleDevice = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: PERFIS_BLE_CANDIDATOS.map(p=>p.servico)
     });
-    logDebug(`Dispositivo escolhido: ${scaleDevice.name || '(sem nome)'}`);
     document.getElementById('scale-status').textContent = '🟡 Conectando...';
 
     const server = await scaleDevice.gatt.connect();
-    logDebug('Conectado ao GATT server. Procurando um perfil compatível...');
 
     let conectouAlgum = false;
     for(const perfil of PERFIS_BLE_CANDIDATOS){
@@ -4456,16 +4496,15 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', onScaleData);
         scaleChar = characteristic;
-        logDebug(`✅ Conectado usando o perfil "${perfil.nome}".`);
         conectouAlgum = true;
         break;
       } catch(e){
-        logDebug(`Perfil "${perfil.nome}" não bateu (${e.message}). Tentando o próximo...`);
+        console.info(`[Balança] Perfil "${perfil.nome}" não disponível: ${e.message}`);
       }
     }
 
     if(!conectouAlgum){
-      logDebug('⚠ Nenhum dos perfis conhecidos bateu com esse dispositivo. Preciso do print dessa caixa pra descobrir o certo.');
+      logErroBalanca('⚠ Conectou ao dispositivo, mas não foi possível encontrar um canal de leitura compatível.');
       toast('Conectou no dispositivo, mas não achei como ler o peso ainda — manda o print da caixa de diagnóstico.');
       document.getElementById('scale-status').textContent = '🟡 Conectado, mas sem leitura de peso ainda';
       document.getElementById('scale-status').style.color = 'var(--hide-dark)';
@@ -4476,13 +4515,13 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
     }
 
     scaleDevice.addEventListener('gattserverdisconnected', ()=>{
-      logDebug('🔴 Bluetooth desconectado.');
+      logErroBalanca('🔴 Bluetooth foi desconectado.');
       document.getElementById('scale-status').textContent = '🔴 Desconectada';
       document.getElementById('scale-status').style.color = 'var(--alert)';
     });
   } catch(e){
     console.warn('Erro ao conectar balança:', e);
-    logDebug(`❌ Erro: ${e.message}`);
+    logErroBalanca(`❌ Não foi possível conectar: ${e.message}`);
     toast('Não conectou — verifica se a balança está ligada e com o Bluetooth ativo.');
   }
 });
@@ -4490,19 +4529,16 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
 let scaleLastProcessTs = 0;
 function onScaleData(event){
   const value = event.target.value; // DataView
-  let texto;
-  try{ texto = new TextDecoder('utf-8').decode(value); }
-  catch(e){ texto = ''; }
+  const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  let texto = '';
+  try{ texto = new TextDecoder('utf-8').decode(bytes).replace(/\0/g, ''); }
+  catch(e){}
 
   // a balança manda leitura várias vezes por segundo — não precisa processar/logar todas,
   // isso é o que tava enchendo a memória do navegador e travando depois de um tempinho
   const agora = Date.now();
   const podeLogar = (agora - scaleLastProcessTs) > 400;
-  if(podeLogar){
-    const hex = Array.from(new Uint8Array(value.buffer)).map(b=>b.toString(16).padStart(2,'0')).join(' ');
-    logDebug(`Recebido: "${texto.replace(/[\r\n]/g,'⏎')}"  (hex: ${hex})`);
-    scaleLastProcessTs = agora;
-  }
+  if(podeLogar) scaleLastProcessTs = agora;
 
   scaleBuffer += texto;
   if(scaleBuffer.length > 300){ scaleBuffer = texto; } // provavelmente esse protocolo não usa quebra de linha — evita crescer sem parar
@@ -4510,13 +4546,16 @@ function onScaleData(event){
   scaleBuffer = linhas.pop();
   linhas.forEach(processarLinhaBalanca);
   // se não veio quebra de linha nenhuma, tenta interpretar o pedaço que já chegou mesmo assim
-  if(linhas.length === 0 && texto && podeLogar) processarLinhaBalanca(texto);
+  if(linhas.length === 0 && texto.trim() && podeLogar) processarLinhaBalanca(texto, bytes);
 }
 
-function processarLinhaBalanca(linha){
+function processarLinhaBalanca(linha, bytes){
   const resultado = interpretarPesoBalanca(linha);
   if(resultado && resultado.estavel && resultado.peso > 0){
     mostrarPesoCapturado(resultado.peso);
+  } else if(linha.trim() && Date.now() - scaleLastProcessTs < 450){
+    const hex = bytes ? Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(' ') : '—';
+    logErroBalanca(`⚠ Leitura não reconhecida: "${linha.replace(/[\r\n]/g,'⏎').trim()}" | bytes: ${hex}`);
   }
 }
 
@@ -4529,11 +4568,11 @@ function interpretarPesoBalanca(linha){
     const peso = parseFloat(m[2].replace(/\s/g,'').replace(',', '.'));
     if(!isNaN(peso)) return { estavel, peso };
   }
-  // reserva: se não bateu com o padrão esperado, pega o primeiro número da linha
-  // (não sabe dizer se está estável, mas evita ficar sem capturar nada)
-  const numMatch = linha.match(/[+-]?\d+[.,]\d+/);
+  // Alguns indicadores mandam somente "350" ou "350 kg". Só aceita quando a
+  // linha inteira for um peso, para não confundir códigos como "C1" com 1 kg.
+  const numMatch = linha.match(/^\s*([+-]?\d+(?:[.,]\d+)?)\s*(?:kg)?\s*$/i);
   if(numMatch){
-    const peso = parseFloat(numMatch[0].replace(',', '.'));
+    const peso = parseFloat(numMatch[1].replace(',', '.'));
     if(!isNaN(peso)) return { estavel: true, peso };
   }
   return null;
@@ -4541,11 +4580,15 @@ function interpretarPesoBalanca(linha){
 
 function mostrarPesoCapturado(peso){
   pesoCapturadoAtual = Math.round(peso*10)/10;
+  if(pesoCapturadoAtual === ultimoPesoConfirmado) return;
+  if(pesoCapturadoAtual === ultimoPesoIgnorado && Date.now() - ultimoPesoIgnoradoEm < 3000) return;
   document.getElementById('scale-popup-valor').textContent = pesoCapturadoAtual + ' kg';
   document.getElementById('scale-popup').classList.remove('hide');
 }
 document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
   if(pesoCapturadoAtual == null) return;
+  ultimoPesoConfirmado = pesoCapturadoAtual;
+  ultimoPesoIgnorado = null;
   if(wiz){
     wiz.data.peso = pesoCapturadoAtual;
     if(!wiz.data.pastoManual){
@@ -4566,6 +4609,8 @@ document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
   pesoCapturadoAtual = null;
 });
 document.getElementById('btn-scale-ignorar').addEventListener('click', ()=>{
+  ultimoPesoIgnorado = pesoCapturadoAtual;
+  ultimoPesoIgnoradoEm = Date.now();
   document.getElementById('scale-popup').classList.add('hide');
   pesoCapturadoAtual = null;
 });
