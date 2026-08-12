@@ -4424,6 +4424,7 @@ document.getElementById('btn-embarque-close').addEventListener('click', ()=>{ go
 let scaleDevice = null;
 let scaleChar = null;
 let scaleBuffer = '';
+let scaleByteBuffer = [];
 let pesoCapturadoAtual = null;
 let proximoPesoPreCarregado = null; // usado quando a balança lê um peso fora do wizard (ex: na Home)
 let ultimoPesoConfirmado = null;
@@ -4530,36 +4531,66 @@ let scaleLastProcessTs = 0;
 function onScaleData(event){
   const value = event.target.value; // DataView
   const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  let texto = '';
-  try{ texto = new TextDecoder('utf-8').decode(bytes).replace(/\0/g, ''); }
-  catch(e){}
-
-  // a balança manda leitura várias vezes por segundo — não precisa processar/logar todas,
-  // isso é o que tava enchendo a memória do navegador e travando depois de um tempinho
-  const agora = Date.now();
-  const podeLogar = (agora - scaleLastProcessTs) > 400;
-  if(podeLogar) scaleLastProcessTs = agora;
-
-  scaleBuffer += texto;
-  if(scaleBuffer.length > 300){ scaleBuffer = texto; } // provavelmente esse protocolo não usa quebra de linha — evita crescer sem parar
-  const linhas = scaleBuffer.split(/\r?\n/);
-  scaleBuffer = linhas.pop();
-  linhas.forEach(processarLinhaBalanca);
-  // se não veio quebra de linha nenhuma, tenta interpretar o pedaço que já chegou mesmo assim
-  if(linhas.length === 0 && texto.trim() && podeLogar) processarLinhaBalanca(texto, bytes);
+  processarBytesBalanca(bytes);
 }
 
-function processarLinhaBalanca(linha, bytes){
+/*
+  Coimma envia a mensagem Bluetooth em pedaços pequenos. No seu teste, por
+  exemplo, o começo veio como 02 ... P01000000 e o final (064 00 checksum 03)
+  chegou depois. Só interpretamos depois de receber STX (02) e ETX (03), para
+  não confundir uma parte do pacote com erro ou com um peso incompleto.
+*/
+function processarBytesBalanca(bytes){
+  scaleByteBuffer.push(...bytes);
+  if(scaleByteBuffer.length > 512) scaleByteBuffer = scaleByteBuffer.slice(-128);
+
+  while(true){
+    const inicio = scaleByteBuffer.indexOf(0x02); // STX
+    if(inicio < 0){
+      // Alguns indicadores simples enviam apenas texto, sem STX/ETX.
+      const textoSolto = new TextDecoder('utf-8').decode(new Uint8Array(scaleByteBuffer)).trim();
+      if(textoSolto) processarLinhaBalanca(textoSolto, new Uint8Array(scaleByteBuffer));
+      scaleByteBuffer = [];
+      return;
+    }
+    if(inicio > 0) scaleByteBuffer = scaleByteBuffer.slice(inicio);
+    const fim = scaleByteBuffer.indexOf(0x03, 1); // ETX
+    if(fim < 0) return; // ainda aguardando a próxima parte do mesmo pacote
+
+    const pacote = new Uint8Array(scaleByteBuffer.slice(0, fim + 1));
+    scaleByteBuffer = scaleByteBuffer.slice(fim + 1);
+    processarPacoteBalanca(pacote);
+  }
+}
+
+function processarPacoteBalanca(bytes){
+  const corpoBytes = bytes.slice(1, -1); // remove STX e ETX
+  const linha = new TextDecoder('utf-8').decode(corpoBytes);
   const resultado = interpretarPesoBalanca(linha);
   if(resultado && resultado.estavel && resultado.peso > 0){
     mostrarPesoCapturado(resultado.peso);
-  } else if(linha.trim() && Date.now() - scaleLastProcessTs < 450){
-    const hex = bytes ? Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(' ') : '—';
+  } else {
+    const hex = Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(' ');
     logErroBalanca(`⚠ Leitura não reconhecida: "${linha.replace(/[\r\n]/g,'⏎').trim()}" | bytes: ${hex}`);
   }
 }
 
+function processarLinhaBalanca(linha, bytes){
+  const resultado = interpretarPesoBalanca(linha);
+  if(resultado && resultado.estavel && resultado.peso > 0) mostrarPesoCapturado(resultado.peso);
+}
+
 function interpretarPesoBalanca(linha){
+  // Pacote Coimma identificado no teste real:
+  // STX 0002600101 P01000000 064 00 checksum ETX
+  // Os 3 algarismos finais antes do byte 00 são o peso mostrado no visor.
+  // "P01" indica leitura pronta/estável. Ex.: ...P01000000064\0... = 64 kg.
+  const coimma = linha.match(/P01\d{6}(\d{3,5})\0/i);
+  if(coimma){
+    const peso = Number(coimma[1]);
+    if(Number.isFinite(peso) && peso > 0) return { estavel:true, peso };
+  }
+
   // protocolo padrão usado pela Toledo e por vários indicadores compatíveis (inclusive parte da linha Coimma):
   // formato típico: "ST,GS,+001234.5,kg"  (ST = estável, US = instável; GS/NT = peso bruto/líquido)
   const m = linha.match(/(ST|US)[,;\s]+\w*[,;\s]*([+-]?\s*\d+[.,]?\d*)/i);
