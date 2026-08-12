@@ -641,7 +641,7 @@ body.login-mode #app{background:var(--ink);}
       <button class="btn btn-primary" id="btn-save-pasto">Salvar configurações</button>
 
       <h1 class="page-title" style="font-size:20px;margin-top:28px;">⚖ Balança</h1>
-      <p class="page-sub">Conecta a balança pareada no computador — o peso estável entra sozinho, em qualquer tela do manejo.</p>
+      <p class="page-sub">Conecta a balança por Bluetooth direto pelo app — o peso estável entra sozinho, em qualquer tela do manejo. Funciona no Chrome/Edge do computador ou Android (não funciona no iPhone/Safari).</p>
       <div class="field">
         <label>Marca</label>
         <select id="scale-brand-select">
@@ -649,8 +649,12 @@ body.login-mode #app{background:var(--ink);}
           <option value="coimma">Coimma</option>
         </select>
       </div>
-      <button class="btn btn-secondary" id="btn-conectar-balanca">🔌 Conectar balança</button>
+      <button class="btn btn-secondary" id="btn-conectar-balanca">🔵 Conectar por Bluetooth</button>
       <div id="scale-status" style="margin-top:10px;padding:10px 13px;border-radius:9px;background:var(--dust-deep);font-size:12.5px;font-weight:700;color:var(--ink-soft);">Desconectada</div>
+
+      <div class="section-title" style="margin-top:18px;">Diagnóstico (o que a balança está mandando)</div>
+      <p class="page-sub" style="margin-top:-6px;">Ajuda a "traduzir" o formato certo — se o peso não estiver aparecendo automático, manda um print dessa caixa aqui embaixo.</p>
+      <div id="scale-debug" style="background:#182619;color:#c8f0c8;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:12px;border-radius:9px;height:130px;overflow-y:auto;white-space:pre-wrap;">Nenhum dado recebido ainda.</div>
     </div>
     <div class="nav-tabs">
       <button data-target="home"><div class="dot"></div>Início</button>
@@ -4352,16 +4356,37 @@ document.getElementById('btn-start-embarque').addEventListener('click', ()=>{
 document.getElementById('btn-embarque-close').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
 
 /* ============================================================
-   BALANÇA — conecta via porta serial (funciona com balanças
-   pareadas por Bluetooth no Windows/Mac, que viram uma "porta COM").
-   Só funciona no Chrome/Edge de computador — não funciona em
-   celular/tablet nem no Safari/iPhone (limitação do navegador).
+   BALANÇA — conecta por Bluetooth direto pelo app (Web Bluetooth API).
+   Só funciona no Chrome/Edge (computador ou Android) — não funciona
+   no Safari/iPhone (limitação do navegador, não tem como contornar).
+
+   Como eu não tenho o manual exato do protocolo desses indicadores,
+   tento uma lista de "perfis" Bluetooth comuns em módulos desse tipo
+   até algum funcionar, e mostro tudo que chegar na caixa de
+   diagnóstico — se o peso não cair sozinho, o print dessa caixa
+   ajuda a ajustar certinho.
    ============================================================ */
-let scalePort = null;
-let scaleReader = null;
+let scaleDevice = null;
+let scaleChar = null;
 let scaleBuffer = '';
 let pesoCapturadoAtual = null;
 let proximoPesoPreCarregado = null; // usado quando a balança lê um peso fora do wizard (ex: na Home)
+
+// perfis Bluetooth (BLE) comuns em módulos usados nesse tipo de indicador — tenta um por um
+const PERFIS_BLE_CANDIDATOS = [
+  { nome:'Nordic UART', servico:'6e400001-b5a3-f393-e0a9-e50e24dcca9e', notify:'6e400003-b5a3-f393-e0a9-e50e24dcca9e' },
+  { nome:'HM-10 / genérico FFE0', servico:'0000ffe0-0000-1000-8000-00805f9b34fb', notify:'0000ffe1-0000-1000-8000-00805f9b34fb' },
+  { nome:'Weight Scale Service padrão', servico:'0000181d-0000-1000-8000-00805f9b34fb', notify:'00002a9d-0000-1000-8000-00805f9b34fb' }
+];
+
+function logDebug(msg){
+  const el = document.getElementById('scale-debug');
+  if(!el) return;
+  const hora = new Date().toLocaleTimeString('pt-BR');
+  if(el.textContent === 'Nenhum dado recebido ainda.') el.textContent = '';
+  el.textContent += `[${hora}] ${msg}\n`;
+  el.scrollTop = el.scrollHeight;
+}
 
 document.getElementById('scale-brand-select').value = localStorage.getItem('auditaboi_scale_brand') || 'toledo';
 document.getElementById('scale-brand-select').addEventListener('change', (e)=>{
@@ -4369,48 +4394,80 @@ document.getElementById('scale-brand-select').addEventListener('change', (e)=>{
 });
 
 document.getElementById('btn-conectar-balanca').addEventListener('click', async ()=>{
-  if(!('serial' in navigator)){
-    toast('Esse navegador não suporta conexão com balança — usa Chrome ou Edge, no computador.');
+  if(!('bluetooth' in navigator)){
+    toast('Esse navegador não suporta Bluetooth — usa Chrome ou Edge, no computador ou Android.');
+    logDebug('❌ navigator.bluetooth não existe nesse navegador.');
     return;
   }
   try{
-    scalePort = await navigator.serial.requestPort();
-    await scalePort.open({ baudRate: 9600 }); // taxa comum nesses indicadores; ajusto se precisar
-    document.getElementById('scale-status').textContent = '🟢 Conectada — aguardando peso estabilizar...';
-    document.getElementById('scale-status').style.color = 'var(--grass-deep)';
-    toast('Balança conectada!');
-    lerBalancaContinuamente();
+    logDebug('Abrindo a lista de dispositivos Bluetooth próximos...');
+    scaleDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: PERFIS_BLE_CANDIDATOS.map(p=>p.servico)
+    });
+    logDebug(`Dispositivo escolhido: ${scaleDevice.name || '(sem nome)'}`);
+    document.getElementById('scale-status').textContent = '🟡 Conectando...';
+
+    const server = await scaleDevice.gatt.connect();
+    logDebug('Conectado ao GATT server. Procurando um perfil compatível...');
+
+    let conectouAlgum = false;
+    for(const perfil of PERFIS_BLE_CANDIDATOS){
+      try{
+        const service = await server.getPrimaryService(perfil.servico);
+        const characteristic = await service.getCharacteristic(perfil.notify);
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', onScaleData);
+        scaleChar = characteristic;
+        logDebug(`✅ Conectado usando o perfil "${perfil.nome}".`);
+        conectouAlgum = true;
+        break;
+      } catch(e){
+        logDebug(`Perfil "${perfil.nome}" não bateu (${e.message}). Tentando o próximo...`);
+      }
+    }
+
+    if(!conectouAlgum){
+      logDebug('⚠ Nenhum dos perfis conhecidos bateu com esse dispositivo. Preciso do print dessa caixa pra descobrir o certo.');
+      toast('Conectou no dispositivo, mas não achei como ler o peso ainda — manda o print da caixa de diagnóstico.');
+      document.getElementById('scale-status').textContent = '🟡 Conectado, mas sem leitura de peso ainda';
+      document.getElementById('scale-status').style.color = 'var(--hide-dark)';
+    } else {
+      toast('Balança conectada!');
+      document.getElementById('scale-status').textContent = '🟢 Conectada — aguardando peso estabilizar...';
+      document.getElementById('scale-status').style.color = 'var(--grass-deep)';
+    }
+
+    scaleDevice.addEventListener('gattserverdisconnected', ()=>{
+      logDebug('🔴 Bluetooth desconectado.');
+      document.getElementById('scale-status').textContent = '🔴 Desconectada';
+      document.getElementById('scale-status').style.color = 'var(--alert)';
+    });
   } catch(e){
     console.warn('Erro ao conectar balança:', e);
-    toast('Não conectou — verifica se a balança está pareada e ligada.');
+    logDebug(`❌ Erro: ${e.message}`);
+    toast('Não conectou — verifica se a balança está ligada e com o Bluetooth ativo.');
   }
 });
 
-async function lerBalancaContinuamente(){
-  const textDecoder = new TextDecoderStream();
-  const streamClosed = scalePort.readable.pipeTo(textDecoder.writable);
-  scaleReader = textDecoder.readable.getReader();
-  try{
-    while(true){
-      const { value, done } = await scaleReader.read();
-      if(done) break;
-      if(value){
-        scaleBuffer += value;
-        const linhas = scaleBuffer.split(/\r?\n/);
-        scaleBuffer = linhas.pop(); // guarda o pedaço incompleto pra próxima leitura
-        linhas.forEach(processarLinhaBalanca);
-      }
-    }
-  } catch(e){
-    console.warn('Conexão com a balança caiu:', e);
-    document.getElementById('scale-status').textContent = '🔴 Desconectada (verifica o pareamento)';
-    document.getElementById('scale-status').style.color = 'var(--alert)';
-  }
+function onScaleData(event){
+  const value = event.target.value; // DataView
+  let texto;
+  try{ texto = new TextDecoder('utf-8').decode(value); }
+  catch(e){ texto = ''; }
+  const hex = Array.from(new Uint8Array(value.buffer)).map(b=>b.toString(16).padStart(2,'0')).join(' ');
+  logDebug(`Recebido: "${texto.replace(/[\r\n]/g,'⏎')}"  (hex: ${hex})`);
+
+  scaleBuffer += texto;
+  const linhas = scaleBuffer.split(/\r?\n/);
+  scaleBuffer = linhas.pop();
+  linhas.forEach(processarLinhaBalanca);
+  // se não veio quebra de linha nenhuma, tenta interpretar o pedaço que já chegou mesmo assim
+  if(linhas.length === 0 && texto) processarLinhaBalanca(texto);
 }
 
 function processarLinhaBalanca(linha){
-  const marca = document.getElementById('scale-brand-select').value;
-  const resultado = interpretarPesoBalanca(linha, marca);
+  const resultado = interpretarPesoBalanca(linha);
   if(resultado && resultado.estavel && resultado.peso > 0){
     mostrarPesoCapturado(resultado.peso);
   }
