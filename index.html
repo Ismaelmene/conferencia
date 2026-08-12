@@ -639,6 +639,18 @@ body.login-mode #app{background:var(--ink);}
       <div id="pasto-rows"></div>
       <button class="btn btn-secondary" id="btn-add-pasto" style="margin:6px 0 18px;">+ Adicionar faixa</button>
       <button class="btn btn-primary" id="btn-save-pasto">Salvar configurações</button>
+
+      <h1 class="page-title" style="font-size:20px;margin-top:28px;">⚖ Balança</h1>
+      <p class="page-sub">Conecta a balança pareada no computador — o peso estável entra sozinho, em qualquer tela do manejo.</p>
+      <div class="field">
+        <label>Marca</label>
+        <select id="scale-brand-select">
+          <option value="toledo">Toledo</option>
+          <option value="coimma">Coimma</option>
+        </select>
+      </div>
+      <button class="btn btn-secondary" id="btn-conectar-balanca">🔌 Conectar balança</button>
+      <div id="scale-status" style="margin-top:10px;padding:10px 13px;border-radius:9px;background:var(--dust-deep);font-size:12.5px;font-weight:700;color:var(--ink-soft);">Desconectada</div>
     </div>
     <div class="nav-tabs">
       <button data-target="home"><div class="dot"></div>Início</button>
@@ -878,6 +890,15 @@ body.login-mode #app{background:var(--ink);}
 
   <div id="loading" class="loading-overlay hide">Carregando…</div>
   <div id="toast" class="toast hide"></div>
+
+  <div id="scale-popup" class="hide" style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:300;background:var(--ink);color:var(--white);border-radius:14px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,0.35);text-align:center;min-width:240px;max-width:88%;">
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--dust-deep);">⚖ Peso da balança</div>
+    <div style="font-family:'Archivo Expanded',sans-serif;font-weight:900;font-size:32px;margin:4px 0 12px;" id="scale-popup-valor">—</div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btn-scale-ignorar">Ignorar</button>
+      <button class="btn btn-primary" id="btn-scale-usar" style="background:var(--go-green);">Usar este peso</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -1322,10 +1343,11 @@ function newWizard(){
   wiz = {
     steps: buildSteps(),
     idx: 0,
-    data: { ordem:"", idAntigo:"", id:"", peso:"", pasto:"", pastoManual:"", idadeMeses:"", mesNasc:"", anoNasc:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", paridade:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
+    data: { ordem:"", idAntigo:"", id:"", peso: (typeof proximoPesoPreCarregado!=='undefined' && proximoPesoPreCarregado!==null) ? proximoPesoPreCarregado : "", pasto:"", pastoManual:"", idadeMeses:"", mesNasc:"", anoNasc:"", raca:"", categoria:"", sexo:"", dg:"", idadeGestacional:"", paridade:"", dataTrabalho: sessionWorkDate || todayISO(), obs:"" },
     editingId: null,
     blockReason: null
   };
+  if(typeof proximoPesoPreCarregado!=='undefined') proximoPesoPreCarregado = null;
 }
 
 /* ============================================================
@@ -4328,6 +4350,113 @@ document.getElementById('btn-start-embarque').addEventListener('click', ()=>{
   setTimeout(()=> document.getElementById('emb-brinco').focus(), 50);
 });
 document.getElementById('btn-embarque-close').addEventListener('click', ()=>{ goScreen('home'); renderHome(); });
+
+/* ============================================================
+   BALANÇA — conecta via porta serial (funciona com balanças
+   pareadas por Bluetooth no Windows/Mac, que viram uma "porta COM").
+   Só funciona no Chrome/Edge de computador — não funciona em
+   celular/tablet nem no Safari/iPhone (limitação do navegador).
+   ============================================================ */
+let scalePort = null;
+let scaleReader = null;
+let scaleBuffer = '';
+let pesoCapturadoAtual = null;
+let proximoPesoPreCarregado = null; // usado quando a balança lê um peso fora do wizard (ex: na Home)
+
+document.getElementById('scale-brand-select').value = localStorage.getItem('auditaboi_scale_brand') || 'toledo';
+document.getElementById('scale-brand-select').addEventListener('change', (e)=>{
+  try{ localStorage.setItem('auditaboi_scale_brand', e.target.value); } catch(err){}
+});
+
+document.getElementById('btn-conectar-balanca').addEventListener('click', async ()=>{
+  if(!('serial' in navigator)){
+    toast('Esse navegador não suporta conexão com balança — usa Chrome ou Edge, no computador.');
+    return;
+  }
+  try{
+    scalePort = await navigator.serial.requestPort();
+    await scalePort.open({ baudRate: 9600 }); // taxa comum nesses indicadores; ajusto se precisar
+    document.getElementById('scale-status').textContent = '🟢 Conectada — aguardando peso estabilizar...';
+    document.getElementById('scale-status').style.color = 'var(--grass-deep)';
+    toast('Balança conectada!');
+    lerBalancaContinuamente();
+  } catch(e){
+    console.warn('Erro ao conectar balança:', e);
+    toast('Não conectou — verifica se a balança está pareada e ligada.');
+  }
+});
+
+async function lerBalancaContinuamente(){
+  const textDecoder = new TextDecoderStream();
+  const streamClosed = scalePort.readable.pipeTo(textDecoder.writable);
+  scaleReader = textDecoder.readable.getReader();
+  try{
+    while(true){
+      const { value, done } = await scaleReader.read();
+      if(done) break;
+      if(value){
+        scaleBuffer += value;
+        const linhas = scaleBuffer.split(/\r?\n/);
+        scaleBuffer = linhas.pop(); // guarda o pedaço incompleto pra próxima leitura
+        linhas.forEach(processarLinhaBalanca);
+      }
+    }
+  } catch(e){
+    console.warn('Conexão com a balança caiu:', e);
+    document.getElementById('scale-status').textContent = '🔴 Desconectada (verifica o pareamento)';
+    document.getElementById('scale-status').style.color = 'var(--alert)';
+  }
+}
+
+function processarLinhaBalanca(linha){
+  const marca = document.getElementById('scale-brand-select').value;
+  const resultado = interpretarPesoBalanca(linha, marca);
+  if(resultado && resultado.estavel && resultado.peso > 0){
+    mostrarPesoCapturado(resultado.peso);
+  }
+}
+
+function interpretarPesoBalanca(linha){
+  // protocolo padrão usado pela Toledo e por vários indicadores compatíveis (inclusive parte da linha Coimma):
+  // formato típico: "ST,GS,+001234.5,kg"  (ST = estável, US = instável; GS/NT = peso bruto/líquido)
+  const m = linha.match(/(ST|US)[,;\s]+\w*[,;\s]*([+-]?\s*\d+[.,]?\d*)/i);
+  if(m){
+    const estavel = m[1].toUpperCase() === 'ST';
+    const peso = parseFloat(m[2].replace(/\s/g,'').replace(',', '.'));
+    if(!isNaN(peso)) return { estavel, peso };
+  }
+  // reserva: se não bateu com o padrão esperado, pega o primeiro número da linha
+  // (não sabe dizer se está estável, mas evita ficar sem capturar nada)
+  const numMatch = linha.match(/[+-]?\d+[.,]\d+/);
+  if(numMatch){
+    const peso = parseFloat(numMatch[0].replace(',', '.'));
+    if(!isNaN(peso)) return { estavel: true, peso };
+  }
+  return null;
+}
+
+function mostrarPesoCapturado(peso){
+  pesoCapturadoAtual = Math.round(peso*10)/10;
+  document.getElementById('scale-popup-valor').textContent = pesoCapturadoAtual + ' kg';
+  document.getElementById('scale-popup').classList.remove('hide');
+}
+document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
+  if(pesoCapturadoAtual == null) return;
+  if(wiz){
+    wiz.data.peso = pesoCapturadoAtual;
+    const inPeso = document.getElementById('in-peso');
+    if(inPeso){ inPeso.value = pesoCapturadoAtual; inPeso.dispatchEvent(new Event('input')); }
+  } else {
+    proximoPesoPreCarregado = pesoCapturadoAtual;
+  }
+  toast(`Peso ${pesoCapturadoAtual}kg registrado.`);
+  document.getElementById('scale-popup').classList.add('hide');
+  pesoCapturadoAtual = null;
+});
+document.getElementById('btn-scale-ignorar').addEventListener('click', ()=>{
+  document.getElementById('scale-popup').classList.add('hide');
+  pesoCapturadoAtual = null;
+});
 
 /* ---------- tela de abertura (logo) — some depois de 3s ---------- */
 setTimeout(()=>{
