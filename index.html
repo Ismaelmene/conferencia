@@ -903,6 +903,10 @@ body.login-mode #app{background:var(--ink);}
       <button class="btn btn-primary" id="btn-scale-usar" style="background:var(--go-green);">Usar este peso</button>
     </div>
   </div>
+
+  <div id="scale-waiting-banner" class="hide" style="position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:250;background:#e7ddc4;color:var(--hide-dark);border-radius:20px;padding:8px 16px;font-size:12.5px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,0.2);display:flex;align-items:center;gap:8px;">
+    <span class="live-dot" style="background:var(--hide-dark);"></span> Aguardando peso da balança...
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -2487,6 +2491,10 @@ function renderWizard(){
 
   document.getElementById('wiz-farm-lbl').textContent = `${currentFarm ? currentFarm.nome : ""} · Passo ${wiz.idx+1} de ${steps.length} — ${step.label}`;
 
+  // faixa "aguardando balança" — aparece em qualquer etapa (menos a de Peso, que já tem a própria tela) enquanto não tiver peso
+  const semPesoAindaAguardandoBalanca = scaleChar && !wiz.data.peso && step.key !== 'peso';
+  document.getElementById('scale-waiting-banner').classList.toggle('hide', !semPesoAindaAguardandoBalanca);
+
   const content = document.getElementById('wiz-step-content');
   content.innerHTML = "";
   content.appendChild(step.render());
@@ -2634,7 +2642,10 @@ function validateStep(key){
     case 'ordem': return (d.ordem===""||d.ordem===null||isNaN(d.ordem)) ? "Informe o número de ordem." : null;
     case 'id': return !d.id.trim() ? "Informe o ID do animal." : null;
     case 'peso':
-      if(!d.peso || isNaN(d.peso) || Number(d.peso)<=0) return "Informe um peso válido.";
+      if(!d.peso || isNaN(d.peso) || Number(d.peso)<=0){
+        if(scaleChar) return null; // balança conectada — deixa seguir sem peso, aguarda estabilizar nas próximas telas
+        return "Informe um peso válido.";
+      }
       if(!d.pasto) return "Informe o destino do animal — escreva em \"Outro destino\" se nenhuma faixa configurada bateu.";
       return null;
     case 'idade':
@@ -2905,11 +2916,12 @@ function renderStepObs(){
 
 function renderStepRevisar(){
   const d = wiz.data;
+  const pesoFaltando = !d.peso;
   const rows = [
     { k:"Ordem", v:d.ordem, step:"ordem" },
     { k:"ID antigo", v:d.idAntigo||"—", step:"ordem" },
     { k:"ID", v:d.id, step:"id" },
-    { k:"Peso", v:d.peso+" kg ("+faixaApartacao(Number(d.peso))+")", step:"peso" },
+    { k:"Peso", v: pesoFaltando ? "⚖ aguardando balança..." : (d.peso+" kg ("+faixaApartacao(Number(d.peso))+")"), step:"peso" },
     { k:"Destino", v:d.pasto || "—", step:"peso" },
     { k:"Idade", v:d.idadeMeses!=="" ? `${d.idadeMeses} meses (nasc. ${d.mesNasc}/${d.anoNasc})` : "—", step:"idade" },
     { k:"Raça", v:d.raca, step:"raca" },
@@ -2926,12 +2938,33 @@ function renderStepRevisar(){
 
   const el = document.createElement('div');
   el.innerHTML = `<h1 class="page-title">Revisar</h1><p class="page-sub">Confira os dados. Toque em qualquer linha pra corrigir aquele campo.</p>
+    ${pesoFaltando ? `<div class="block-banner" style="margin-bottom:10px;">⚖ Ainda sem peso — a balança não estabilizou ainda.
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn btn-secondary" id="btn-aguardar-balanca" style="flex:1;">Aguardar estabilizar</button>
+        <button class="btn btn-primary" id="btn-peso-manual" style="flex:1;">✏ Preencher manualmente</button>
+      </div>
+    </div>` : ''}
     <div id="dup-banner"></div>
     <div class="review-card">
       ${rows.map(r=>`<div class="review-row ${r.step?'editable':''}" ${r.step?`data-step="${r.step}"`:''}><span class="k">${r.k}</span><span class="v">${r.v}${r.step?' <span class="edit">editar ✎</span>':''}</span></div>`).join("")}
     </div>
     <div id="step-err" class="err-msg"></div>
     ${wiz.editingId ? '<button class="btn btn-ghost" id="btn-delete-animal" style="color:var(--alert);margin-top:6px;">🗑 Excluir este cadastro</button>' : ''}`;
+
+  setTimeout(()=>{
+    const btnAguardar = document.getElementById('btn-aguardar-balanca');
+    if(btnAguardar) btnAguardar.addEventListener('click', ()=> toast('Ok, seguindo aqui — assim que a balança estabilizar, o peso preenche sozinho.'));
+    const btnManual = document.getElementById('btn-peso-manual');
+    if(btnManual) btnManual.addEventListener('click', ()=>{
+      const steps = activeSteps();
+      const idx = steps.findIndex(s=>s.key==='peso');
+      if(idx>-1){ wiz.idx = idx; renderWizard(); }
+    });
+  });
+
+  if(pesoFaltando){
+    document.getElementById('btn-wiz-next').setAttribute('disabled','disabled');
+  }
   checkDuplicates().then(dup=>{
     const banner = el.querySelector('#dup-banner');
     if(dup){
@@ -2941,11 +2974,11 @@ function renderStepRevisar(){
     } else if(duplicateCheckUncertain){
       wiz.blockReason = null;
       banner.innerHTML = `<div class="pasto-hint">📡 Sem conexão no momento — não deu pra cruzar com os outros retiros agora. Segue normal; será conferido automaticamente quando sincronizar.</div>`;
-      document.getElementById('btn-wiz-next').removeAttribute('disabled');
+      if(!pesoFaltando) document.getElementById('btn-wiz-next').removeAttribute('disabled');
     } else {
       wiz.blockReason = null;
       banner.innerHTML = `<div class="ok-banner">✓ Nenhuma duplicidade encontrada</div>`;
-      document.getElementById('btn-wiz-next').removeAttribute('disabled');
+      if(!pesoFaltando) document.getElementById('btn-wiz-next').removeAttribute('disabled');
     }
   });
   setTimeout(()=>{
@@ -4515,8 +4548,16 @@ document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
   if(pesoCapturadoAtual == null) return;
   if(wiz){
     wiz.data.peso = pesoCapturadoAtual;
+    if(!wiz.data.pastoManual){
+      const pastoAuto = findPastoForPeso(pesoCapturadoAtual);
+      if(pastoAuto) wiz.data.pasto = pastoAuto;
+    }
     const inPeso = document.getElementById('in-peso');
     if(inPeso){ inPeso.value = pesoCapturadoAtual; inPeso.dispatchEvent(new Event('input')); }
+    document.getElementById('scale-waiting-banner').classList.add('hide');
+    // se a tela de Revisar já estava esperando o peso, redesenha ela mostrando o valor que chegou
+    const steps = activeSteps();
+    if(steps[wiz.idx] && steps[wiz.idx].key === 'revisar') renderWizard();
   } else {
     proximoPesoPreCarregado = pesoCapturadoAtual;
   }
