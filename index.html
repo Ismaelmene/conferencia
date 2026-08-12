@@ -912,7 +912,7 @@ body.login-mode #app{background:var(--ink);}
     <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--dust-deep);">⚖ Peso da balança</div>
     <div style="font-family:'Archivo Expanded',sans-serif;font-weight:900;font-size:32px;margin:4px 0 12px;" id="scale-popup-valor">—</div>
     <div class="btn-row">
-      <button class="btn btn-secondary" id="btn-scale-ignorar">Ignorar</button>
+      <button class="btn btn-secondary" id="btn-scale-verificar">Verificar peso</button>
       <button class="btn btn-primary" id="btn-scale-usar" style="background:var(--go-green);">OK — registrar peso</button>
     </div>
   </div>
@@ -4430,6 +4430,7 @@ let proximoPesoPreCarregado = null; // usado quando a balança lê um peso fora 
 let ultimoPesoConfirmado = null;
 let ultimoPesoIgnorado = null;
 let ultimoPesoIgnoradoEm = 0;
+let verificandoNovoPeso = false;
 
 // perfis Bluetooth (BLE) comuns em módulos usados nesse tipo de indicador — tenta um por um
 const PERFIS_BLE_CANDIDATOS = [
@@ -4615,6 +4616,13 @@ function mostrarPesoCapturado(peso){
   if(pesoCapturadoAtual === ultimoPesoIgnorado && Date.now() - ultimoPesoIgnoradoEm < 3000) return;
   document.getElementById('scale-popup-valor').textContent = pesoCapturadoAtual + ' kg';
   document.getElementById('scale-popup').classList.remove('hide');
+  if(verificandoNovoPeso){
+    verificandoNovoPeso = false;
+    const btn = document.getElementById('btn-scale-verificar');
+    btn.disabled = false;
+    btn.textContent = 'Verificar peso';
+    toast(`Novo peso lido: ${pesoCapturadoAtual} kg.`);
+  }
 }
 document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
   if(pesoCapturadoAtual == null) return;
@@ -4639,11 +4647,18 @@ document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
   document.getElementById('scale-popup').classList.add('hide');
   pesoCapturadoAtual = null;
 });
-document.getElementById('btn-scale-ignorar').addEventListener('click', ()=>{
+document.getElementById('btn-scale-verificar').addEventListener('click', ()=>{
+  // Mantém a janela aberta e descarta esta leitura. A próxima leitura estável
+  // atualiza o valor antes de o usuário confirmar com OK.
   ultimoPesoIgnorado = pesoCapturadoAtual;
   ultimoPesoIgnoradoEm = Date.now();
-  document.getElementById('scale-popup').classList.add('hide');
   pesoCapturadoAtual = null;
+  verificandoNovoPeso = true;
+  document.getElementById('scale-popup-valor').textContent = 'Lendo...';
+  const btn = document.getElementById('btn-scale-verificar');
+  btn.disabled = true;
+  btn.textContent = 'Aguardando balança...';
+  toast('Verificando novamente. Aguarde o peso estabilizar.');
 });
 
 /* ---------- tela de abertura (logo) — some depois de 3s ---------- */
