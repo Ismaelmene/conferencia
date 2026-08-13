@@ -706,7 +706,10 @@ body.login-mode #app{background:var(--ink);}
 
       <div class="section-title">Animais embarcados</div>
       <div id="emb-lista"></div>
-      <button class="btn btn-ghost" id="btn-emb-limpar" style="color:var(--alert);margin-top:16px;">🗑 Limpar embarque</button>
+      <div class="btn-row" style="margin-top:16px;">
+        <button class="btn btn-secondary" id="btn-emb-exportar">⬇ Exportar PDF</button>
+        <button class="btn btn-ghost" id="btn-emb-limpar" style="color:var(--alert);">🗑 Limpar embarque</button>
+      </div>
     </div>
   </div>
 
@@ -4402,6 +4405,67 @@ document.getElementById('btn-emb-limpar').addEventListener('click', ()=>{
   salvarEmbarqueLocal();
   renderEmbarque();
 });
+function exportarEmbarquePDF(){
+  if(!embarqueList.length){ toast('Nenhum animal embarcado ainda pra exportar.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait' });
+  const pageW = 210, pageH = 297, marginX = 14;
+
+  const totalAnimais = embarqueList.length;
+  const pesoTotalKg = embarqueList.reduce((a,b)=> a + (Number(b.peso)||0), 0);
+  const pesoTotalArroba = pesoTotalKg / 30;
+  const pesoMedioKg = totalAnimais ? pesoTotalKg / totalAnimais : 0;
+  const pesoMedioArroba = pesoMedioKg / 30;
+
+  // título + linha de destaque (mesmo padrão visual dos outros relatórios)
+  doc.setFont(undefined,'bold'); doc.setFontSize(21); doc.setTextColor(24,38,25);
+  doc.text('RELATÓRIO DE EMBARQUE', marginX, 20);
+  doc.setDrawColor(185,121,63); doc.setLineWidth(1.3);
+  doc.line(marginX, 23.5, marginX+40, 23.5);
+  doc.setFont(undefined,'normal'); doc.setFontSize(10.5); doc.setTextColor(90,90,90);
+  const nomeFazenda = (typeof currentFarm!=='undefined' && currentFarm) ? (currentFarm.nomeCompleto||currentFarm.nome) : '';
+  doc.text(`${nomeFazenda ? nomeFazenda+' — ' : ''}Gado carregado para venda — ${formatDataBR(todayISO())}`, marginX, 30);
+
+  // resumo geral
+  doc.autoTable({
+    startY: 36,
+    head: [['Total de animais','Peso total (kg)','Peso total (@)','Peso médio (kg)','Peso médio (@)']],
+    body: [[
+      String(totalAnimais),
+      String(Math.round(pesoTotalKg*10)/10),
+      String(Math.round(pesoTotalArroba*100)/100),
+      String(Math.round(pesoMedioKg*10)/10),
+      String(Math.round(pesoMedioArroba*100)/100)
+    ]],
+    theme: 'grid',
+    styles: { fontSize: 10, cellPadding: 4, halign:'center', lineColor:[216,203,169], lineWidth:0.3 },
+    headStyles: { fillColor: [24,38,25], textColor: 255, fontStyle: 'bold', fontSize: 9 }
+  });
+
+  // lista de cada animal embarcado
+  let y = doc.lastAutoTable.finalY + 12;
+  doc.setFont(undefined,'bold'); doc.setFontSize(13); doc.setTextColor(24,38,25);
+  doc.text('Animais embarcados', marginX, y);
+
+  doc.autoTable({
+    startY: y + 5,
+    head: [['#','Brinco','Peso (kg)','Peso (@)']],
+    body: embarqueList.map((e,i)=>[
+      String(i+1), e.brinco, String(e.peso), String(Math.round((Number(e.peso)/30)*100)/100)
+    ]),
+    theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 3, lineColor:[216,203,169], lineWidth:0.3 },
+    headStyles: { fillColor: [44,90,134], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0:{cellWidth:14,halign:'center'}, 2:{halign:'right'}, 3:{halign:'right'} }
+  });
+
+  doc.setFontSize(8); doc.setTextColor(130,130,130); doc.setFont(undefined,'normal');
+  doc.text(`Exportado em ${formatDataBR(todayISO())}`, pageW-marginX, pageH-8, { align:'right' });
+
+  const nomeArquivo = `embarque-${nomeFazenda ? slugifyFarmName(nomeFazenda) : 'geral'}-${todayISO()}.pdf`;
+  doc.save(nomeArquivo);
+}
+document.getElementById('btn-emb-exportar').addEventListener('click', exportarEmbarquePDF);
 document.getElementById('btn-start-embarque').addEventListener('click', ()=>{
   carregarEmbarqueLocal();
   goScreen('embarque');
