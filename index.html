@@ -4628,7 +4628,17 @@ document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
   if(pesoCapturadoAtual == null) return;
   ultimoPesoConfirmado = pesoCapturadoAtual;
   ultimoPesoIgnorado = null;
-  if(wiz){
+  const naTelaEmbarque = !document.getElementById('screen-embarque').classList.contains('hide');
+  if(naTelaEmbarque){
+    // No embarque, o peso confirmado pela balança entra direto no formulário.
+    // O operador só informa/confere o brinco e adiciona o animal à lista.
+    const pesoEmbarque = document.getElementById('emb-peso');
+    const brincoEmbarque = document.getElementById('emb-brinco');
+    pesoEmbarque.value = pesoCapturadoAtual;
+    pesoEmbarque.dispatchEvent(new Event('input', { bubbles:true }));
+    setTimeout(()=> brincoEmbarque.focus(), 30);
+    toast(`Peso ${pesoCapturadoAtual} kg preenchido no embarque.`);
+  } else if(wiz){
     wiz.data.peso = pesoCapturadoAtual;
     if(!wiz.data.pastoManual){
       const pastoAuto = findPastoForPeso(pesoCapturadoAtual);
@@ -4642,8 +4652,8 @@ document.getElementById('btn-scale-usar').addEventListener('click', ()=>{
     if(steps[wiz.idx] && steps[wiz.idx].key === 'revisar') renderWizard();
   } else {
     proximoPesoPreCarregado = pesoCapturadoAtual;
+    toast(`Peso ${pesoCapturadoAtual} kg preparado para a próxima auditoria.`);
   }
-  toast(`Peso ${pesoCapturadoAtual}kg registrado.`);
   document.getElementById('scale-popup').classList.add('hide');
   pesoCapturadoAtual = null;
 });
