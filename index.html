@@ -4644,13 +4644,15 @@ const UUID_WEIGHT_MEASUREMENT = '00002a9d-0000-1000-8000-00805f9b34fb';
 function onScaleData(event){
   const value = event.target.value; // DataView
   // Serviço Bluetooth oficial "Weight Scale" — formato de bytes documentado pela
-  // especificação Bluetooth SIG, não precisa adivinhar/interpretar texto:
-  // byte 0 = flags (bit0: 0=kg / 1=lb) | bytes 1-2 = peso (uint16, little-endian)
+  // especificação Bluetooth SIG: byte 0 = flags (bit0: 0=kg / 1=lb) | bytes 1-2 = peso
+  // bruto (uint16, little-endian). A resolução por unidade varia por aparelho (o padrão
+  // prevê 0.005kg, mas testado nessa balança real ela usa 0.1kg — confirmado comparando
+  // com o peso mostrado no visor: bruto 574 = 57.4 kg).
   if(event.target.uuid === UUID_WEIGHT_MEASUREMENT && value.byteLength >= 3){
     const flags = value.getUint8(0);
     const imperial = (flags & 0x01) !== 0;
     const bruto = value.getUint16(1, true);
-    const pesoKg = imperial ? Math.round(bruto*0.01*0.453592*10)/10 : Math.round(bruto*0.005*10)/10;
+    const pesoKg = imperial ? Math.round(bruto*0.01*0.453592*10)/10 : Math.round(bruto*0.1*10)/10;
     if(scaleLastProcessTs === 0 || Date.now()-scaleLastProcessTs > 400){
       logErroBalanca(`Leitura oficial (Weight Measurement): ${pesoKg} kg (bruto=${bruto}, unidade=${imperial?'lb':'kg'})`);
       scaleLastProcessTs = Date.now();
