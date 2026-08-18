@@ -660,6 +660,7 @@ body.login-mode #app{background:var(--ink);}
         <select id="scale-brand-select">
           <option value="toledo">Toledo</option>
           <option value="coimma">Coimma</option>
+          <option value="tru-test">Tru-Test (S2)</option>
         </select>
       </div>
       <button class="btn btn-secondary" id="btn-conectar-balanca">🔵 Conectar por Bluetooth</button>
@@ -4498,9 +4499,9 @@ let verificandoNovoPeso = false;
 
 // perfis Bluetooth (BLE) comuns em módulos usados nesse tipo de indicador — tenta um por um
 const PERFIS_BLE_CANDIDATOS = [
-  { nome:'Nordic UART', servico:'6e400001-b5a3-f393-e0a9-e50e24dcca9e', notify:'6e400003-b5a3-f393-e0a9-e50e24dcca9e' },
-  { nome:'HM-10 / genérico FFE0', servico:'0000ffe0-0000-1000-8000-00805f9b34fb', notify:'0000ffe1-0000-1000-8000-00805f9b34fb' },
-  { nome:'Weight Scale Service padrão', servico:'0000181d-0000-1000-8000-00805f9b34fb', notify:'00002a9d-0000-1000-8000-00805f9b34fb' }
+  { nome:'Nordic UART', servico:'6e400001-b5a3-f393-e0a9-e50e24dcca9e', notify:'6e400003-b5a3-f393-e0a9-e50e24dcca9e', write:'6e400002-b5a3-f393-e0a9-e50e24dcca9e' },
+  { nome:'HM-10 / genérico FFE0', servico:'0000ffe0-0000-1000-8000-00805f9b34fb', notify:'0000ffe1-0000-1000-8000-00805f9b34fb', write:'0000ffe1-0000-1000-8000-00805f9b34fb' },
+  { nome:'Weight Scale Service padrão', servico:'0000181d-0000-1000-8000-00805f9b34fb', notify:'00002a9d-0000-1000-8000-00805f9b34fb', write:null }
 ];
 
 function logErroBalanca(msg){
@@ -4555,6 +4556,7 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
     const server = await scaleDevice.gatt.connect();
 
     let conectouAlgum = false;
+    let writeChar = null;
     for(const perfil of PERFIS_BLE_CANDIDATOS){
       try{
         const service = await server.getPrimaryService(perfil.servico);
@@ -4562,6 +4564,10 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', onScaleData);
         scaleChar = characteristic;
+        if(perfil.write){
+          try{ writeChar = (perfil.write === perfil.notify) ? characteristic : await service.getCharacteristic(perfil.write); }
+          catch(e){ writeChar = null; }
+        }
         conectouAlgum = true;
         break;
       } catch(e){
@@ -4578,12 +4584,27 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
       toast('Balança conectada!');
       document.getElementById('scale-status').textContent = '🟢 Conectada — aguardando peso estabilizar...';
       document.getElementById('scale-status').style.color = 'var(--grass-deep)';
+
+      // Tru-Test (indicadores XR3000/XR5000) usa o protocolo SCP: não fica transmitindo
+      // sozinho, precisa perguntar o peso com o comando {RH}. Fica perguntando sozinho,
+      // repetindo a cada 1s, enquanto a conexão durar.
+      const marcaAtual = document.getElementById('scale-brand-select').value;
+      if(marcaAtual === 'tru-test' && writeChar){
+        if(scaleTruTestInterval) clearInterval(scaleTruTestInterval);
+        scaleTruTestInterval = setInterval(async ()=>{
+          try{ await writeChar.writeValue(new TextEncoder().encode('{RH}\r\n')); }
+          catch(e){ /* pode falhar se desconectou; a checagem de gattserverdisconnected trata isso */ }
+        }, 1000);
+      } else if(marcaAtual === 'tru-test' && !writeChar){
+        logErroBalanca('⚠ Tru-Test selecionada, mas não achei um canal de escrita pra perguntar o peso (comando {RH}). Só vai funcionar se a balança transmitir sozinha.');
+      }
     }
 
     scaleDevice.addEventListener('gattserverdisconnected', ()=>{
       logErroBalanca('🔴 Bluetooth foi desconectado.');
       document.getElementById('scale-status').textContent = '🔴 Desconectada';
       document.getElementById('scale-status').style.color = 'var(--alert)';
+      if(scaleTruTestInterval){ clearInterval(scaleTruTestInterval); scaleTruTestInterval = null; }
     });
   } catch(e){
     console.warn('Erro ao conectar balança:', e);
@@ -4592,6 +4613,7 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
   }
 });
 
+let scaleTruTestInterval = null;
 let scaleLastProcessTs = 0;
 function onScaleData(event){
   const value = event.target.value; // DataView
@@ -4646,6 +4668,16 @@ function processarLinhaBalanca(linha, bytes){
 }
 
 function interpretarPesoBalanca(linha){
+  // Tru-Test (indicadores XR3000/XR5000, protocolo SCP): responde ao comando {RH} com algo
+  // como "{RH0001234}" (peso em gramas ou 0.1kg, sem separador) ou "{RH 123.4 ST}" (com status
+  // de estável ST/US) — como não tenho o manual exato, tento os dois formatos mais prováveis.
+  const scpComStatus = linha.match(/\{R[HD]\D*([+-]?\d+(?:[.,]\d+)?)\D*(ST|US|MO)?\}/i);
+  if(scpComStatus){
+    const peso = parseFloat(scpComStatus[1].replace(',', '.'));
+    const estavel = !scpComStatus[2] || scpComStatus[2].toUpperCase() !== 'US';
+    if(!isNaN(peso) && peso > 0) return { estavel, peso };
+  }
+
   // Pacote Coimma identificado no teste real:
   // STX 0002600101 P01000000 064 00 checksum ETX
   // Os 3 algarismos finais antes do byte 00 são o peso mostrado no visor.
