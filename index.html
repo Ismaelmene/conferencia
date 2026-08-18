@@ -4564,9 +4564,22 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', onScaleData);
         scaleChar = characteristic;
-        if(perfil.write){
-          try{ writeChar = (perfil.write === perfil.notify) ? characteristic : await service.getCharacteristic(perfil.write); }
-          catch(e){ writeChar = null; }
+        logErroBalanca(`✅ Conectado usando o perfil "${perfil.nome}" (serviço ${perfil.servico}).`);
+
+        // acha o canal de escrita de verdade — olhando as propriedades de TODAS as características
+        // desse serviço, em vez de chutar um UUID fixo (pode ser diferente do que eu esperava)
+        try{
+          const todasChars = await service.getCharacteristics();
+          logErroBalanca(`Características desse serviço: ${todasChars.map(c=>`${c.uuid} [${Object.entries(c.properties).filter(([,v])=>v).map(([k])=>k).join(',')}]`).join(' | ')}`);
+          const candidataEscrita = todasChars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+          if(candidataEscrita){
+            writeChar = candidataEscrita;
+            logErroBalanca(`✅ Canal de escrita encontrado: ${candidataEscrita.uuid}`);
+          } else {
+            logErroBalanca('⚠ Nenhuma característica desse serviço aceita escrita.');
+          }
+        } catch(e){
+          logErroBalanca(`⚠ Não consegui listar as características do serviço: ${e.message}`);
         }
         conectouAlgum = true;
         break;
@@ -4591,9 +4604,15 @@ document.getElementById('btn-conectar-balanca').addEventListener('click', async 
       const marcaAtual = document.getElementById('scale-brand-select').value;
       if(marcaAtual === 'tru-test' && writeChar){
         if(scaleTruTestInterval) clearInterval(scaleTruTestInterval);
+        let avisouErroEscrita = false;
         scaleTruTestInterval = setInterval(async ()=>{
-          try{ await writeChar.writeValue(new TextEncoder().encode('{RH}\r\n')); }
-          catch(e){ /* pode falhar se desconectou; a checagem de gattserverdisconnected trata isso */ }
+          const comando = new TextEncoder().encode('{RH}\r\n');
+          try{
+            if(writeChar.properties.write) await writeChar.writeValueWithResponse(comando);
+            else await writeChar.writeValueWithoutResponse(comando);
+          } catch(e){
+            if(!avisouErroEscrita){ logErroBalanca(`⚠ Erro ao mandar o comando {RH}: ${e.message}`); avisouErroEscrita = true; }
+          }
         }, 1000);
       } else if(marcaAtual === 'tru-test' && !writeChar){
         logErroBalanca('⚠ Tru-Test selecionada, mas não achei um canal de escrita pra perguntar o peso (comando {RH}). Só vai funcionar se a balança transmitir sozinha.');
