@@ -1461,16 +1461,27 @@ auth.onAuthStateChanged(async (user)=>{
     isAdmin = false;
     // checa se essa conta foi cadastrada pelo admin e está ativa
     let liberado = false;
+    let checagemIncerta = false;
     try{
-      const doc = await getSafe(db.collection('auditores').doc(user.uid));
-      liberado = doc.exists && doc.data().ativo === true;
-      if(liberado){
-        currentAuditorNome = doc.data().nome || "";
-        const lbl = document.getElementById('logged-user-name');
-        if(lbl) lbl.textContent = currentAuditorNome ? `👤 ${currentAuditorNome}` : `👤 ${user.email}`;
+      let doc = await getSafe(db.collection('auditores').doc(user.uid), 8000);
+      if(doc.uncertain){
+        // conexão lenta na hora de logar — dá mais uma chance com prazo maior antes de bloquear de verdade
+        doc = await getSafe(db.collection('auditores').doc(user.uid), 15000);
+      }
+      if(doc.uncertain){
+        checagemIncerta = true; // não deu pra confirmar nem na segunda tentativa — não bloqueia à toa
+      } else {
+        liberado = doc.exists && doc.data().ativo === true;
+        if(liberado){
+          currentAuditorNome = doc.data().nome || "";
+          const lbl = document.getElementById('logged-user-name');
+          if(lbl) lbl.textContent = currentAuditorNome ? `👤 ${currentAuditorNome}` : `👤 ${user.email}`;
+        }
       }
     }catch(e){ console.error(e); }
-    if(!liberado){
+    if(checagemIncerta){
+      toast('⚠ Não deu pra confirmar seu acesso agora (conexão lenta) — tentando prosseguir mesmo assim.');
+    } else if(!liberado){
       const errEl = document.getElementById('login-err');
       errEl.textContent = "Acesso bloqueado. Fale com o administrador.";
       errEl.classList.remove('hide');
@@ -4124,13 +4135,34 @@ document.getElementById('btn-add-auditor').addEventListener('click', async ()=>{
   if(senha.length < 6){ toast("Senha precisa ter pelo menos 6 caracteres."); return; }
   setLoading(true);
   try{
-    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, senha);
-    const newUid = cred.user.uid;
+    let newUid;
+    try{
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email, senha);
+      newUid = cred.user.uid;
+    } catch(e){
+      if(e.code === 'auth/email-already-in-use'){
+        // essa conta já existe (de uma tentativa anterior que travou antes de criar o
+        // perfil de auditor) — tenta logar com a senha digitada pra "consertar" o cadastro,
+        // em vez de simplesmente falhar e deixar a pessoa bloqueada pra sempre
+        try{
+          const cred2 = await secondaryAuth.signInWithEmailAndPassword(email, senha);
+          newUid = cred2.user.uid;
+          toast("Esse e-mail já tinha uma conta — reaproveitando e liberando o acesso dela.");
+        } catch(e2){
+          await secondaryAuth.signOut().catch(()=>{});
+          toast("Esse e-mail já tem uma conta, mas com senha diferente da que você digitou. Peça pra ela informar a senha certa, ou cadastre com outro e-mail.");
+          setLoading(false);
+          return;
+        }
+      } else {
+        throw e;
+      }
+    }
     await db.collection('auditores').doc(newUid).set({
       nome, email, ativo: true,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: currentUser.uid
-    });
+    }, { merge: true });
     await secondaryAuth.signOut();
     document.getElementById('aud-nome').value = "";
     document.getElementById('aud-email').value = "";
