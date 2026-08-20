@@ -789,7 +789,9 @@ body.login-mode #app{background:var(--ink);}
         <div class="review-card" style="margin-top:24px;border-color:var(--alert);">
           <div class="review-row"><span class="k" style="font-weight:900;color:var(--alert);">⚠ Zona de perigo</span></div>
           <p class="page-sub" style="margin:6px 0 12px;">Apaga TODOS os animais, fazendas, retiros, lotes, conferências e conflitos cadastrados até agora — pra quando terminar a fase de teste e quiser começar do zero pra valer. As contas de auditores e do admin continuam, só os dados de auditoria são apagados. Não tem como desfazer.</p>
-          <button class="btn btn-secondary" id="btn-zerar-sistema" style="color:var(--alert);border-color:var(--alert);">🗑 Zerar sistema (apagar tudo)</button>
+          <button class="btn btn-secondary" id="btn-zerar-sistema" style="color:var(--alert);border-color:var(--alert);margin-bottom:14px;">🗑 Zerar sistema (apagar tudo)</button>
+          <p class="page-sub" style="margin:6px 0 12px;">Apaga só os PERFIS de auditor cadastrados (a lista da aba Auditores). Isso não apaga as contas de login — se quiser tirar o acesso de alguém de vez, exclua a conta dela também em Firebase → Authentication.</p>
+          <button class="btn btn-secondary" id="btn-zerar-auditores" style="color:var(--alert);border-color:var(--alert);">🗑 Apagar todos os perfis de auditor</button>
         </div>
       </div>
 
@@ -1508,7 +1510,7 @@ async function loadFarms(){
   setLoading(true);
   try{
     // todas as fazendas/retiros cadastrados pelo admin ficam visíveis pra qualquer auditor selecionar
-    const snap = await getSafe(db.collection('fazendas'));
+    const snap = await getSafe(db.collection('fazendas'), 8000);
     farms = snap.docs.map(d=>({id:d.id, ...d.data()}));
     document.getElementById('farm-picker-name').textContent = currentFarm ? (currentFarm.nomeCompleto||currentFarm.nome) : "Selecionar fazenda";
     if(currentFarm) await loadAnimals();
@@ -1802,7 +1804,7 @@ async function loadLotes(){
   if(!currentFarm){ lotes=[]; return; }
   setLoading(true);
   try{
-    const snap = await getSafe(db.collection('lotes').where('fazendaId','==',currentFarm.id));
+    const snap = await getSafe(db.collection('lotes').where('fazendaId','==',currentFarm.id), 8000);
     lotes = snap.docs.map(d=>({id:d.id, ...d.data()}));
     lotes.sort((a,b)=>{
       const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
@@ -3259,7 +3261,7 @@ async function renderAdmin(){
   switchAdminTab('visao');
   setLoading(true);
   try{
-    const snap = await getSafe(db.collection('fazendas'));
+    const snap = await getSafe(db.collection('fazendas'), 8000);
     adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   } catch(e){ console.error(e); adminFazendas = []; }
   finally { setLoading(false); }
@@ -4002,12 +4004,27 @@ document.getElementById('btn-zerar-sistema').addEventListener('click', async ()=
     toast('Erro ao zerar o sistema — parte dos dados pode ter sido apagada. Confere e tenta de novo se precisar.');
   } finally { setLoading(false); }
 });
+document.getElementById('btn-zerar-auditores').addEventListener('click', async ()=>{
+  const passo1 = confirm("Isso apaga TODOS os perfis de auditor cadastrados (a lista que aparece na aba Auditores). As contas de LOGIN não são apagadas por aqui — se quiser tirar o acesso de alguém de vez, vá em Firebase → Authentication e exclua a conta dela também.\n\nTem certeza que quer continuar?");
+  if(!passo1) return;
+  const digitado = prompt('Pra confirmar de vez, digite ZERAR (tudo maiúsculo):');
+  if(digitado !== 'ZERAR'){ toast('Cancelado — nada foi apagado.'); return; }
+  setLoading(true);
+  try{
+    await apagarColecao('auditores');
+    toast('Todos os perfis de auditor foram apagados.');
+    renderAuditoresList();
+  } catch(e){
+    console.error(e);
+    toast('Erro ao apagar os auditores — tenta de novo.');
+  } finally { setLoading(false); }
+});
 
 async function renderAdminFazendasList(){
   const wrap = document.getElementById('admin-fazendas-list');
   setLoading(true);
   try{
-    const snap = await getSafe(db.collection('fazendas'));
+    const snap = await getSafe(db.collection('fazendas'), 8000);
     adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   } catch(e){ console.error(e); } finally { setLoading(false); }
   if(!adminFazendas.length){ wrap.innerHTML = `<div class="empty-state">Nenhuma fazenda cadastrada ainda.</div>`; return; }
@@ -4097,7 +4114,7 @@ async function renderAuditoresList(){
   setLoading(true);
   let docs = [];
   try{
-    const snap = await getSafe(db.collection('auditores'));
+    const snap = await getSafe(db.collection('auditores'), 8000);
     docs = snap.docs.map(d=>({ uid:d.id, ...d.data() }));
   } catch(e){ console.error(e); } finally { setLoading(false); }
   if(!docs.length){ wrap.innerHTML = `<div class="empty-state">Nenhum auditor cadastrado ainda.</div>`; return; }
