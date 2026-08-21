@@ -2347,11 +2347,17 @@ function resumoOperacoes(list){
 function exportExcelFrom(list, label){
   if(!list.length){ toast("Nenhum animal para exportar."); return; }
   const rows = exportRowsFrom(list);
+  const resumo = resumoOperacoes(list);
   const wb = XLSX.utils.book_new();
-  const wsResumo = XLSX.utils.json_to_sheet(resumoOperacoes(list));
-  XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo Operação");
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, "Rebanho");
+
+  // tudo numa aba só: resumo da operação em cima, e logo abaixo a lista completa de cada
+  // animal — assim não corre risco de passar despercebido numa segunda aba escondida
+  const ws = XLSX.utils.json_to_sheet(resumo);
+  XLSX.utils.sheet_add_aoa(ws, [[]], { origin: -1 });
+  XLSX.utils.sheet_add_aoa(ws, [["REBANHO COMPLETO — TODOS OS ANIMAIS"]], { origin: -1 });
+  XLSX.utils.sheet_add_json(ws, rows, { origin: -1, skipHeader: false });
+
+  XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
   XLSX.writeFile(wb, exportFileName("xlsx", label));
 }
 async function exportPDFFrom(list, label, chartsSpec){
@@ -3076,12 +3082,15 @@ async function findDuplicate(field, value){
   // 1) checa primeiro na lista já carregada (retiro atual) — instantâneo, funciona sempre, mesmo offline
   const localMatch = animals.find(a => a.docId!==wiz.editingId && String(a[field]||"")===String(value));
   if(localMatch) return localMatch;
+  // se já sabe que está offline, nem tenta perguntar pro servidor — segue direto sem
+  // depender de nenhum tempo de espera, garante que nunca trava esperando resposta
+  if(!navigator.onLine){ duplicateCheckUncertain = true; return null; }
   // 2) cruza com o Firestore (outros retiros da mesma fazenda)
   const key = currentFarm.farmGroupKey || currentFarm.id; // compatibilidade com fazendas antigas sem farmGroupKey
   const q = currentFarm.farmGroupKey
     ? db.collection('animais').where('farmGroupKey','==',key).where(field,'==', value)
     : db.collection('animais').where('fazendaId','==',currentFarm.id).where(field,'==', value);
-  const snap = await getSafe(q.limit(1));
+  const snap = await getSafe(q.limit(1), 1500);
   if(snap.uncertain){ duplicateCheckUncertain = true; return null; }
   if(snap.empty) return null;
   const doc = snap.docs[0];
@@ -4232,8 +4241,10 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
       return "";
     }
 
-    // prioriza a aba "Rebanho" (nosso próprio formato de exportação); senão, testa todas as abas até achar a tabela
-    let tabela = wb.Sheets['Rebanho'] ? acharTabela(wb.Sheets['Rebanho']) : null;
+    // prioriza a aba "Auditoria" (nosso formato atual de exportação, tudo numa aba só);
+    // senão, testa todas as abas até achar a tabela — cobre também arquivos exportados
+    // antes dessa mudança (que usavam uma aba separada chamada "Rebanho")
+    let tabela = wb.Sheets['Auditoria'] ? acharTabela(wb.Sheets['Auditoria']) : (wb.Sheets['Rebanho'] ? acharTabela(wb.Sheets['Rebanho']) : null);
     if(!tabela){
       for(const nome of wb.SheetNames){
         tabela = acharTabela(wb.Sheets[nome]);
