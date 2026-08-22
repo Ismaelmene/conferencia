@@ -469,7 +469,10 @@ body.login-mode #app{background:var(--ink);}
         <button class="iconbtn" id="btn-logout" style="padding:2px 0;">Sair</button>
       </div>
     </div>
-    <div id="sync-badge" class="hide" style="margin:0 20px 10px;padding:8px 14px;background:#e7ddc4;color:var(--hide-dark);font-size:12.5px;font-weight:700;border-radius:9px;text-align:center;"></div>
+    <div id="sync-badge" class="hide" style="margin:0 20px 10px;padding:8px 14px;background:#e7ddc4;color:var(--hide-dark);font-size:12.5px;font-weight:700;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <span id="sync-badge-text"></span>
+      <button id="btn-sync-agora" class="btn btn-secondary" style="padding:6px 12px;font-size:11.5px;flex-shrink:0;">🔄 Sincronizar agora</button>
+    </div>
     <div id="conflict-badge" class="hide" style="margin:0 20px 10px;padding:10px 14px;background:var(--alert-bg);color:var(--alert);font-size:12.5px;font-weight:700;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
       <span id="conflict-badge-text"></span>
       <button id="btn-ver-conflitos" class="btn btn-secondary" style="padding:6px 12px;font-size:11.5px;flex-shrink:0;">Ver e corrigir</button>
@@ -653,6 +656,22 @@ body.login-mode #app{background:var(--ink);}
       <button class="btn btn-secondary" id="btn-add-pasto" style="margin:6px 0 18px;">+ Adicionar faixa</button>
       <button class="btn btn-primary" id="btn-save-pasto">Salvar configurações</button>
 
+      <h1 class="page-title" style="font-size:20px;margin-top:28px;">🔑 Minha senha</h1>
+      <p class="page-sub">Troque sua senha de acesso quando quiser.</p>
+      <div class="field">
+        <label>Senha atual</label>
+        <input type="password" id="in-senha-atual" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label>Nova senha</label>
+        <input type="password" id="in-senha-nova" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label>Confirmar nova senha</label>
+        <input type="password" id="in-senha-nova2" placeholder="Repita a nova senha" autocomplete="new-password">
+      </div>
+      <button class="btn btn-secondary" id="btn-trocar-senha">Trocar senha</button>
+
       <h1 class="page-title" style="font-size:20px;margin-top:28px;">⚖ Balança</h1>
       <p class="page-sub">Conecta a balança por Bluetooth direto pelo app — o peso estável entra sozinho, em qualquer tela do manejo. Funciona no Chrome/Edge do computador ou Android (não funciona no iPhone/Safari).</p>
       <div class="field">
@@ -816,8 +835,22 @@ body.login-mode #app{background:var(--ink);}
       <!-- ADICIONAR OPERAÇÃO -->
       <div id="admin-operacao-view" class="hide">
         <p class="page-sub" style="margin-top:-6px;">Importe uma planilha de animais já auditados de uma fazenda/retiro pra compilar no sistema. Duplicidade de ID é cruzada automaticamente pelo nome da fazenda.</p>
-        <div class="field"><label>Nome da fazenda</label><input type="text" id="op-fazenda" placeholder="Ex: Fazenda Boa Vista"></div>
-        <div class="field"><label>Retiro (opcional)</label><input type="text" id="op-retiro" placeholder="Ex: Retiro Sede"></div>
+        <div class="field">
+          <label>Fazenda</label>
+          <select id="op-fazenda-select"></select>
+        </div>
+        <div class="field hide" id="op-fazenda-nova-field">
+          <label>Nome da nova fazenda</label>
+          <input type="text" id="op-fazenda" placeholder="Ex: Fazenda Boa Vista">
+        </div>
+        <div class="field">
+          <label>Retiro</label>
+          <select id="op-retiro-select"></select>
+        </div>
+        <div class="field hide" id="op-retiro-novo-field">
+          <label>Nome do novo retiro</label>
+          <input type="text" id="op-retiro" placeholder="Ex: Retiro Sede">
+        </div>
         <div class="field"><label>Auditor responsável</label><input type="text" id="op-auditor" placeholder="Nome do auditor"></div>
         <div class="field">
           <label>Planilha (.xlsx)</label>
@@ -1220,10 +1253,19 @@ document.getElementById('btn-resolve-save').addEventListener('click', async ()=>
 function updatePendingSyncBadge(){
   const el = document.getElementById('sync-badge');
   if(!el) return;
-  const n = getOutbox().length;
-  if(n > 0){ el.textContent = `⏳ ${n} aguardando sincronizar`; el.classList.remove('hide'); }
+  const n = getOutbox().length + getLoteOutbox().length + getDeleteOutbox().length;
+  if(n > 0){ document.getElementById('sync-badge-text').textContent = `⏳ ${n} aguardando sincronizar`; el.classList.remove('hide'); }
   else { el.classList.add('hide'); }
 }
+document.getElementById('btn-sync-agora').addEventListener('click', async ()=>{
+  if(!navigator.onLine){ toast('Sem internet agora — assim que voltar, sincroniza sozinho.'); return; }
+  toast('Sincronizando...');
+  await flushOutbox();
+  await flushDeleteOutbox();
+  await flushLoteOutbox();
+  updatePendingSyncBadge();
+  toast(getOutbox().length || getLoteOutbox().length || getDeleteOutbox().length ? 'Ainda restou algo pra sincronizar — tenta de novo em instantes.' : '✅ Tudo sincronizado!');
+});
 let conflitosAbertosCache = [];
 async function checkConflictsProactively(){
   if(!currentFarm || isAdmin) return;
@@ -1249,14 +1291,16 @@ window.addEventListener('online', async ()=>{
   toast('✅ Conexão de volta — sincronizando dados.');
   await flushOutbox();
   await flushDeleteOutbox();
+  await flushLoteOutbox();
   // assim que a internet voltar, checa se apareceu conflito — só avisa, não interrompe o que você tá fazendo
   await checkConflictsProactively();
 });
 setInterval(async ()=>{
   await flushOutbox();
   await flushDeleteOutbox();
+  await flushLoteOutbox();
   if(navigator.onLine) await checkConflictsProactively();
-}, 30000);
+}, 12000);
 
 /* ============================================================
    ESTADO
@@ -2210,6 +2254,7 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', ()=>{
   // manda pro banco em segundo plano — se não conseguir agora, tenta de novo quando a conexão voltar
   const idsParaConfirmar = pend.map(a=>a.docId);
   idsParaConfirmar.forEach(docId => addToOutbox(docId, animals.find(a=>a.docId===docId)));
+  addToLoteOutbox(loteRef.id, loteData); // antes o lote não tinha fila de reenvio — se falhasse 1x, se perdia pra sempre
   const batch = db.batch();
   batch.set(loteRef, loteData);
   pend.forEach(a=>{
@@ -2221,7 +2266,8 @@ document.getElementById('btn-confirmar-lote').addEventListener('click', ()=>{
   });
   batch.commit().then(()=>{
     idsParaConfirmar.forEach(docId => removeFromOutbox(docId));
-  }).catch(()=>{ /* fica pendente — o Firestore/nossa fila tenta reenviar quando a conexão voltar */ });
+    removeFromLoteOutbox(loteRef.id);
+  }).catch(()=>{ /* fica pendente — a fila (flushLoteOutbox) tenta reenviar quando a conexão voltar */ });
 });
 
 /* ============================================================
@@ -2274,6 +2320,29 @@ document.getElementById('btn-save-pasto').addEventListener('click', ()=>{
   db.collection('fazendas').doc(currentFarm.id).update({ pastoRules: clean }).catch(()=>{
     /* sem internet agora — o Firestore tenta reenviar sozinho quando a conexão voltar */
   });
+});
+
+document.getElementById('btn-trocar-senha').addEventListener('click', async ()=>{
+  const atual = document.getElementById('in-senha-atual').value;
+  const nova = document.getElementById('in-senha-nova').value;
+  const nova2 = document.getElementById('in-senha-nova2').value;
+  if(!atual || !nova || !nova2){ toast("Preencha todos os campos."); return; }
+  if(nova.length < 6){ toast("A nova senha precisa ter pelo menos 6 caracteres."); return; }
+  if(nova !== nova2){ toast("As duas senhas novas não são iguais."); return; }
+  setLoading(true);
+  try{
+    const cred = firebase.auth.EmailAuthProvider.credential(currentUser.email, atual);
+    await currentUser.reauthenticateWithCredential(cred);
+    await currentUser.updatePassword(nova);
+    document.getElementById('in-senha-atual').value = "";
+    document.getElementById('in-senha-nova').value = "";
+    document.getElementById('in-senha-nova2').value = "";
+    toast("Senha trocada com sucesso!");
+  } catch(e){
+    console.error(e);
+    if(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential'){ toast("Senha atual incorreta."); }
+    else { toast("Erro ao trocar a senha. Tente novamente."); }
+  } finally { setLoading(false); }
 });
 
 /* ============================================================
@@ -3043,6 +3112,19 @@ function renderStepRevisar(){
   return el;
 }
 
+function getLoteOutbox(){ try{ return JSON.parse(localStorage.getItem('auditaboi_lote_outbox') || '[]'); } catch(e){ return []; } }
+function setLoteOutbox(list){ try{ localStorage.setItem('auditaboi_lote_outbox', JSON.stringify(list)); } catch(e){} }
+function addToLoteOutbox(loteId, loteData){ const l = getLoteOutbox().filter(x=>x.loteId!==loteId); l.push({ loteId, loteData }); setLoteOutbox(l); }
+function removeFromLoteOutbox(loteId){ setLoteOutbox(getLoteOutbox().filter(x=>x.loteId!==loteId)); }
+async function flushLoteOutbox(){
+  for(const item of getLoteOutbox()){
+    try{
+      await raceTimeout(db.collection('lotes').doc(item.loteId).set(item.loteData, { merge:true }), 6000, null).then(r=>{
+        if(r !== null) removeFromLoteOutbox(item.loteId);
+      });
+    } catch(e){ /* fica na fila, tenta de novo depois */ }
+  }
+}
 function getDeleteOutbox(){ try{ return JSON.parse(localStorage.getItem('auditaboi_delete_outbox') || '[]'); } catch(e){ return []; } }
 function setDeleteOutbox(list){ try{ localStorage.setItem('auditaboi_delete_outbox', JSON.stringify(list)); } catch(e){} }
 function addToDeleteOutbox(docId){ const l = getDeleteOutbox(); if(!l.includes(docId)) l.push(docId); setDeleteOutbox(l); }
@@ -3230,7 +3312,41 @@ document.getElementById('atab-visao').addEventListener('click', ()=> switchAdmin
 document.getElementById('atab-fazendas').addEventListener('click', ()=>{ switchAdminTab('fazendas'); renderAdminFazendasList(); });
 document.getElementById('atab-auditores').addEventListener('click', ()=>{ switchAdminTab('auditores'); renderAuditoresList(); });
 document.getElementById('atab-conflitos').addEventListener('click', ()=>{ switchAdminTab('conflitos'); renderAdminConflitosList(); });
-document.getElementById('atab-operacao').addEventListener('click', ()=> switchAdminTab('operacao'));
+document.getElementById('atab-operacao').addEventListener('click', ()=>{ switchAdminTab('operacao'); renderOperacaoFazendaSelect(); });
+
+function renderOperacaoFazendaSelect(){
+  const sel = document.getElementById('op-fazenda-select');
+  const porGrupo = {};
+  adminFazendas.forEach(f=>{
+    const key = f.farmGroupKey || f.id;
+    if(!porGrupo[key]) porGrupo[key] = { nome: f.nome, key };
+  });
+  const opcoes = Object.values(porGrupo).sort((a,b)=>a.nome.localeCompare(b.nome));
+  sel.innerHTML = `<option value="__nova__">➕ Nova fazenda</option>` + opcoes.map(f=>`<option value="${f.key}">${f.nome}</option>`).join("");
+  atualizarCamposOperacaoFazenda();
+}
+function atualizarCamposOperacaoFazenda(){
+  const val = document.getElementById('op-fazenda-select').value;
+  const nova = val === '__nova__';
+  document.getElementById('op-fazenda-nova-field').classList.toggle('hide', !nova);
+  document.getElementById('op-fazenda').value = "";
+  const selRetiro = document.getElementById('op-retiro-select');
+  if(nova){
+    selRetiro.innerHTML = `<option value="__novo__">➕ Novo retiro</option>`;
+    document.getElementById('op-retiro-novo-field').classList.remove('hide');
+  } else {
+    const retiros = adminFazendas.filter(f=>(f.farmGroupKey||f.id)===val);
+    selRetiro.innerHTML = retiros.map(r=>`<option value="${(r.retiro||'').replace(/"/g,'&quot;')}">${r.retiro||'Sede'}</option>`).join("") + `<option value="__novo__">➕ Novo retiro</option>`;
+    document.getElementById('op-retiro-novo-field').classList.add('hide');
+  }
+  document.getElementById('op-retiro').value = "";
+}
+document.getElementById('op-fazenda-select').addEventListener('change', atualizarCamposOperacaoFazenda);
+document.getElementById('op-retiro-select').addEventListener('change', ()=>{
+  const novo = document.getElementById('op-retiro-select').value === '__novo__';
+  document.getElementById('op-retiro-novo-field').classList.toggle('hide', !novo);
+  document.getElementById('op-retiro').value = "";
+});
 
 async function renderAdminConflitosList(){
   const wrap = document.getElementById('admin-conflitos-list');
@@ -4133,11 +4249,24 @@ async function renderAuditoresList(){
         <div class="aud-name">${a.nome||'—'}</div>
         <div class="aud-email">${a.email||''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
         <span class="aud-status ${a.ativo?'ativo':'bloqueado'}">${a.ativo?'Ativo':'Bloqueado'}</span>
+        <button class="btn btn-secondary" style="padding:8px 12px;" data-reset="${a.email}">🔑 Redefinir senha</button>
         <button class="btn btn-secondary" style="padding:8px 12px;" data-uid="${a.uid}">${a.ativo?'Bloquear':'Desbloquear'}</button>
       </div>
     </div>`).join("");
+  wrap.querySelectorAll('button[data-reset]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const email = btn.dataset.reset;
+      if(!confirm(`Mandar um e-mail de redefinição de senha pra ${email}?`)) return;
+      setLoading(true);
+      try{
+        await auth.sendPasswordResetEmail(email);
+        toast(`E-mail de redefinição enviado pra ${email}.`);
+      } catch(e){ console.error(e); toast(traduzErro(e.code)); }
+      finally { setLoading(false); }
+    });
+  });
   wrap.querySelectorAll('button[data-uid]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const uid = btn.dataset.uid;
@@ -4203,8 +4332,16 @@ document.getElementById('btn-add-auditor').addEventListener('click', async ()=>{
 
 /* ---- adicionar operação (importar planilha) ---- */
 document.getElementById('btn-importar-operacao').addEventListener('click', async ()=>{
-  const fazenda = document.getElementById('op-fazenda').value.trim();
-  const retiro = document.getElementById('op-retiro').value.trim();
+  const fazendaSelVal = document.getElementById('op-fazenda-select').value;
+  let fazenda;
+  if(fazendaSelVal === '__nova__'){
+    fazenda = document.getElementById('op-fazenda').value.trim();
+  } else {
+    const grupo = adminFazendas.find(f=>(f.farmGroupKey||f.id)===fazendaSelVal);
+    fazenda = grupo ? grupo.nome : '';
+  }
+  const retiroSelVal = document.getElementById('op-retiro-select').value;
+  const retiro = (retiroSelVal === '__novo__') ? document.getElementById('op-retiro').value.trim() : retiroSelVal;
   const auditorNome = document.getElementById('op-auditor').value.trim();
   const fileInput = document.getElementById('op-file');
   const resultEl = document.getElementById('op-result');
@@ -4362,6 +4499,7 @@ document.getElementById('btn-importar-operacao').addEventListener('click', async
       <div class="review-row"><span class="k">Sem ID (ignorados)</span><span class="v">${semId}</span></div>`;
     toast(`Operação importada: ${importados} animais.`);
     fileInput.value = "";
+    renderOperacaoFazendaSelect();
   } catch(e){
     console.error(e);
     toast("Erro ao importar a planilha.");
