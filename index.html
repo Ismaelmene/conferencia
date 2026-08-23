@@ -807,8 +807,12 @@ body.login-mode #app{background:var(--ink);}
 
         <div class="review-card" style="margin-top:24px;border-color:var(--alert);">
           <div class="review-row"><span class="k" style="font-weight:900;color:var(--alert);">⚠ Zona de perigo</span></div>
-          <p class="page-sub" style="margin:6px 0 12px;">Apaga TODOS os animais, fazendas, retiros, lotes, conferências e conflitos cadastrados até agora — pra quando terminar a fase de teste e quiser começar do zero pra valer. As contas de auditores e do admin continuam, só os dados de auditoria são apagados. Não tem como desfazer.</p>
-          <button class="btn btn-secondary" id="btn-zerar-sistema" style="color:var(--alert);border-color:var(--alert);margin-bottom:14px;">🗑 Zerar sistema (apagar tudo)</button>
+          <p class="page-sub" style="margin:6px 0 12px;">Apaga os animais, retiros, lotes, conferências e conflitos de UMA fazenda específica — o resto do sistema continua intacto. Não tem como desfazer.</p>
+          <div class="field">
+            <label>Fazenda</label>
+            <select id="danger-fazenda-select"></select>
+          </div>
+          <button class="btn btn-secondary" id="btn-apagar-fazenda" style="color:var(--alert);border-color:var(--alert);margin-bottom:14px;">🗑 Apagar dados dessa fazenda</button>
           <p class="page-sub" style="margin:6px 0 12px;">Apaga só os PERFIS de auditor cadastrados (a lista da aba Auditores). Isso não apaga as contas de login — se quiser tirar o acesso de alguém de vez, exclua a conta dela também em Firebase → Authentication.</p>
           <button class="btn btn-secondary" id="btn-zerar-auditores" style="color:var(--alert);border-color:var(--alert);">🗑 Apagar todos os perfis de auditor</button>
         </div>
@@ -3403,6 +3407,7 @@ async function renderAdmin(){
   selFazenda.innerHTML = listaFazendas.length
     ? listaFazendas.map(f=>`<option value="${f.key}">${f.nome} (${f.retiros.length} retiro${f.retiros.length>1?'s':''})</option>`).join("")
     : `<option value="">Nenhuma fazenda cadastrada ainda</option>`;
+  renderDangerFazendaSelect();
 
   await applyAdminScope();
   renderAuditoresList();
@@ -4108,25 +4113,55 @@ async function apagarColecao(nome, onProgresso){
   }
   return apagados;
 }
-document.getElementById('btn-zerar-sistema').addEventListener('click', async ()=>{
-  const passo1 = confirm("Isso apaga TODOS os animais, fazendas, retiros, lotes, conferências e conflitos cadastrados até agora, de todas as fazendas. Não tem como desfazer.\n\nTem certeza que quer continuar?");
+async function apagarColecaoFiltrada(nome, campo, valor){
+  while(true){
+    const snap = await db.collection(nome).where(campo,'==',valor).limit(450).get();
+    if(snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach(d=> batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+function renderDangerFazendaSelect(){
+  const sel = document.getElementById('danger-fazenda-select');
+  if(!sel) return;
+  const porGrupo = {};
+  adminFazendas.forEach(f=>{
+    const key = f.farmGroupKey || f.id;
+    if(!porGrupo[key]) porGrupo[key] = { nome: f.nome, key, retiros: 0 };
+    porGrupo[key].retiros++;
+  });
+  const opcoes = Object.values(porGrupo).sort((a,b)=>a.nome.localeCompare(b.nome));
+  sel.innerHTML = opcoes.length
+    ? opcoes.map(f=>`<option value="${f.key}">${f.nome} (${f.retiros} retiro${f.retiros>1?'s':''})</option>`).join("")
+    : `<option value="">Nenhuma fazenda cadastrada</option>`;
+}
+document.getElementById('btn-apagar-fazenda').addEventListener('click', async ()=>{
+  const key = document.getElementById('danger-fazenda-select').value;
+  if(!key){ toast('Selecione uma fazenda.'); return; }
+  const nomeFazenda = document.getElementById('danger-fazenda-select').selectedOptions[0]?.textContent || key;
+  const passo1 = confirm(`Isso apaga TODOS os animais, retiros, lotes, conferências e conflitos da fazenda "${nomeFazenda}" (todos os retiros dela). O resto do sistema continua intacto. Não tem como desfazer.\n\nTem certeza que quer continuar?`);
   if(!passo1) return;
-  const digitado = prompt('Pra confirmar de vez, digite ZERAR (tudo maiúsculo):');
-  if(digitado !== 'ZERAR'){ toast('Cancelado — nada foi apagado.'); return; }
+  const digitado = prompt('Pra confirmar de vez, digite APAGAR (tudo maiúsculo):');
+  if(digitado !== 'APAGAR'){ toast('Cancelado — nada foi apagado.'); return; }
   setLoading(true);
   const resultEl = document.getElementById('admin-fazendas-list');
   try{
-    const colecoes = ['animais','lotes','conflitos','operacoes','fazendas'];
+    const colecoes = ['animais','lotes','conflitos','operacoes'];
     for(const col of colecoes){
-      resultEl.innerHTML = `<div class="empty-state">Apagando ${col}...</div>`;
-      await apagarColecao(col);
+      resultEl.innerHTML = `<div class="empty-state">Apagando ${col} de "${nomeFazenda}"...</div>`;
+      await apagarColecaoFiltrada(col, 'farmGroupKey', key);
     }
-    toast('Sistema zerado! Todos os dados de auditoria foram apagados.');
+    resultEl.innerHTML = `<div class="empty-state">Apagando cadastro dos retiros...</div>`;
+    await apagarColecaoFiltrada('fazendas', 'farmGroupKey', key);
+
+    toast(`Dados da fazenda "${nomeFazenda}" apagados.`);
+    if(currentFarm && currentFarm.farmGroupKey === key){ currentFarm = null; animals = []; }
     adminFazendas = [];
     await renderAdmin();
   } catch(e){
     console.error(e);
-    toast('Erro ao zerar o sistema — parte dos dados pode ter sido apagada. Confere e tenta de novo se precisar.');
+    toast('Erro ao apagar os dados dessa fazenda — parte pode ter sido apagada. Confere e tenta de novo se precisar.');
   } finally { setLoading(false); }
 });
 document.getElementById('btn-zerar-auditores').addEventListener('click', async ()=>{
@@ -4152,6 +4187,7 @@ async function renderAdminFazendasList(){
     const snap = await getSafe(db.collection('fazendas'), 8000);
     adminFazendas = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   } catch(e){ console.error(e); } finally { setLoading(false); }
+  renderDangerFazendaSelect();
   if(!adminFazendas.length){ wrap.innerHTML = `<div class="empty-state">Nenhuma fazenda cadastrada ainda.</div>`; return; }
   const porNome = {};
   adminFazendas.forEach(f=>{
