@@ -998,10 +998,31 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 // habilita cache offline: os dados já vistos ficam salvos no navegador,
-// e o que for cadastrado sem internet sincroniza sozinho quando a conexão voltar
-db.enablePersistence({ synchronizeTabs: true }).catch(err=>{
+// e o que for cadastrado sem internet sincroniza sozinho quando a conexão voltar.
+// synchronizeTabs desligado de propósito — a sincronização entre várias abas abertas
+// ao mesmo tempo é o que mais historicamente trava o Firestore com o erro interno
+// "INTERNAL ASSERTION FAILED", e aqui cada auditor normalmente usa só uma aba por vez.
+db.enablePersistence({ synchronizeTabs: false }).catch(err=>{
   console.warn('Persistência offline não disponível:', err.code);
 });
+
+// Esse é um bug conhecido do próprio SDK do Firebase: de vez em quando a parte de
+// sincronização offline trava internamente com "INTERNAL ASSERTION FAILED", e a
+// única forma de resolver é recarregar a página. Em vez de precisar perceber isso
+// e fechar/abrir manualmente, o app detecta sozinho e recarrega automaticamente —
+// os dados já cadastrados ficam salvos localmente (fila de sincronização) e não se perdem.
+let firestoreErroCriticoDetectado = false;
+function detectarErroCriticoFirestore(erro){
+  const msg = (erro && (erro.message || String(erro))) || '';
+  if(msg.includes('INTERNAL ASSERTION FAILED') && !firestoreErroCriticoDetectado){
+    firestoreErroCriticoDetectado = true;
+    toast('⚠ Erro interno do banco de dados — recarregando o app pra corrigir (seus dados estão salvos)...');
+    setTimeout(()=> window.location.reload(), 2500);
+  }
+}
+window.addEventListener('unhandledrejection', (event)=> detectarErroCriticoFirestore(event.reason));
+window.addEventListener('error', (event)=> detectarErroCriticoFirestore(event.error));
+
 const ADMIN_EMAIL = "menezesapptec@gmail.com";
 // app secundário: usado só pra criar contas de auditores sem deslogar o admin da sessão principal
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
@@ -1692,6 +1713,17 @@ async function loadAnimals(){
       toast('⚠ Não deu pra carregar a lista completa agora (conexão lenta/instável) — os números podem estar incompletos. Tenta de novo assim que a internet melhorar.');
     }
     animals = snap.docs.map(d=>({...d.data(), docId:d.id}));
+
+    // reincorpora os cadastros que ainda estão esperando sincronizar (fila local) — sem isso,
+    // um recarregamento de página fazia eles "sumirem" da tela até terminarem de sincronizar,
+    // mesmo sem terem sido perdidos de verdade (continuavam salvos, só ainda não confirmados no banco)
+    getOutbox().forEach(item=>{
+      if(item.payload && item.payload.fazendaId === currentFarm.id){
+        const idx = animals.findIndex(a=>a.docId===item.docId);
+        if(idx>-1) animals[idx] = { ...item.payload, docId: item.docId };
+        else animals.push({ ...item.payload, docId: item.docId });
+      }
+    });
   } finally { setLoading(false); }
 }
 
