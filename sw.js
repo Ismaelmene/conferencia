@@ -4,12 +4,13 @@
    na rede primeiro (pra sempre pegar a versão mais nova quando tem
    sinal); se não conseguir, usa o que já tem guardado. */
 
-const CACHE_NAME = 'auditaboi-v1';
+const CACHE_NAME = 'auditaboi-v2';
 
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './logo-aimex.jpg',
+  './som-abertura.mp3',
   'https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Archivo+Expanded:wght@700;900&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap',
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
@@ -48,7 +49,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-store' })
       .then(res => {
         const resClone = res.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(req, resClone)).catch(()=>{});
