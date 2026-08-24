@@ -1075,7 +1075,7 @@ async function flushOutbox(){
     try{
       const resultado = await Promise.race([
         db.collection('animais').doc(item.docId).set(item.payload, {merge:true}).then(()=> 'ok'),
-        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 5000))
+        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 20000))
       ]);
       if(resultado === 'ok'){
         removeFromOutbox(item.docId);
@@ -1291,10 +1291,9 @@ function updatePendingSyncBadge(){
 }
 document.getElementById('btn-sync-agora').addEventListener('click', async ()=>{
   if(!navigator.onLine){ toast('Sem internet agora — assim que voltar, sincroniza sozinho.'); return; }
+  if(sincronizandoAgora){ toast('Já tem uma sincronização em andamento, aguarda ela terminar.'); return; }
   toast('Sincronizando...');
-  await flushOutbox();
-  await flushDeleteOutbox();
-  await flushLoteOutbox();
+  await sincronizarTudo();
   updatePendingSyncBadge();
   const restante = getOutbox().length + getLoteOutbox().length + getDeleteOutbox().length;
   toast(restante ? `Ainda restam ${restante} — abra o console (F12) pra ver o motivo do erro.` : '✅ Tudo sincronizado!');
@@ -1320,20 +1319,27 @@ document.getElementById('btn-ver-conflitos').addEventListener('click', ()=>{
   conflictResolveCallback = null;
   if(conflitosAbertosCache.length) openConflictsModal(conflitosAbertosCache);
 });
+let sincronizandoAgora = false; // impede que duas sincronizações rodem ao mesmo tempo — isso é o que causava
+                                 // reenviar a mesma gravação várias vezes antes da anterior confirmar
+async function sincronizarTudo(){
+  if(sincronizandoAgora) return; // já tem uma rodando — não empilha outra por cima
+  sincronizandoAgora = true;
+  try{
+    await flushOutbox();
+    await flushDeleteOutbox();
+    await flushLoteOutbox();
+  } finally { sincronizandoAgora = false; }
+}
 window.addEventListener('online', async ()=>{
   toast('✅ Conexão de volta — sincronizando dados.');
-  await flushOutbox();
-  await flushDeleteOutbox();
-  await flushLoteOutbox();
+  await sincronizarTudo();
   // assim que a internet voltar, checa se apareceu conflito — só avisa, não interrompe o que você tá fazendo
   await checkConflictsProactively();
 });
 setInterval(async ()=>{
-  await flushOutbox();
-  await flushDeleteOutbox();
-  await flushLoteOutbox();
+  await sincronizarTudo();
   if(navigator.onLine) await checkConflictsProactively();
-}, 12000);
+}, 25000);
 
 /* ============================================================
    ESTADO
@@ -3165,7 +3171,7 @@ async function flushLoteOutbox(){
     try{
       const resultado = await Promise.race([
         db.collection('lotes').doc(item.loteId).set(item.loteData, { merge:true }).then(()=> 'ok'),
-        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 6000))
+        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 20000))
       ]);
       if(resultado === 'ok') removeFromLoteOutbox(item.loteId);
       else console.warn('[Sincronização] Tempo esgotado tentando salvar lote', item.loteId);
@@ -3183,7 +3189,7 @@ async function flushDeleteOutbox(){
     try{
       const resultado = await Promise.race([
         db.collection('animais').doc(docId).delete().then(()=> 'ok'),
-        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 5000))
+        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 20000))
       ]);
       if(resultado === 'ok') removeFromDeleteOutbox(docId);
       else console.warn('[Sincronização] Tempo esgotado tentando excluir', docId);
