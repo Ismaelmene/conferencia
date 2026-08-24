@@ -772,6 +772,7 @@ body.login-mode #app{background:var(--ink);}
           <button class="btn btn-secondary" id="btn-admin-export-xlsx">⬇ Excel</button>
           <button class="btn btn-secondary" id="btn-admin-export-pdf">⬇ PDF</button>
         </div>
+        <button class="btn btn-secondary" id="btn-admin-limpar-duplicados" style="margin-bottom:18px;color:var(--alert);border-color:var(--alert);">🧹 Limpar IDs duplicados (fazenda toda)</button>
 
         <div class="grid2" style="margin-bottom:6px;">
           <div class="stat-card"><div class="num" id="admin-stat-total">0</div><div class="lbl">Total auditado</div></div>
@@ -1072,13 +1073,19 @@ async function flushOutbox(){
   if(!list.length) return;
   for(const item of list){
     try{
-      await raceTimeout(db.collection('animais').doc(item.docId).set(item.payload, {merge:true}), 5000, null).then(async (r)=>{
-        if(r !== null){
-          removeFromOutbox(item.docId); // r não-nulo = escrita confirmada
-          await checkForConflict(item.docId, item.payload);
-        }
-      });
-    } catch(e){ /* segue tentando os próximos; esse permanece na fila */ }
+      const resultado = await Promise.race([
+        db.collection('animais').doc(item.docId).set(item.payload, {merge:true}).then(()=> 'ok'),
+        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 5000))
+      ]);
+      if(resultado === 'ok'){
+        removeFromOutbox(item.docId);
+        await checkForConflict(item.docId, item.payload);
+      } else {
+        console.warn('[Sincronização] Tempo esgotado tentando salvar', item.docId);
+      }
+    } catch(e){
+      console.error('[Sincronização] Erro ao salvar', item.docId, '→', e.code || e.message || e);
+    }
   }
 }
 
@@ -1289,7 +1296,8 @@ document.getElementById('btn-sync-agora').addEventListener('click', async ()=>{
   await flushDeleteOutbox();
   await flushLoteOutbox();
   updatePendingSyncBadge();
-  toast(getOutbox().length || getLoteOutbox().length || getDeleteOutbox().length ? 'Ainda restou algo pra sincronizar — tenta de novo em instantes.' : '✅ Tudo sincronizado!');
+  const restante = getOutbox().length + getLoteOutbox().length + getDeleteOutbox().length;
+  toast(restante ? `Ainda restam ${restante} — abra o console (F12) pra ver o motivo do erro.` : '✅ Tudo sincronizado!');
 });
 let conflitosAbertosCache = [];
 async function checkConflictsProactively(){
@@ -3155,10 +3163,15 @@ function removeFromLoteOutbox(loteId){ setLoteOutbox(getLoteOutbox().filter(x=>x
 async function flushLoteOutbox(){
   for(const item of getLoteOutbox()){
     try{
-      await raceTimeout(db.collection('lotes').doc(item.loteId).set(item.loteData, { merge:true }), 6000, null).then(r=>{
-        if(r !== null) removeFromLoteOutbox(item.loteId);
-      });
-    } catch(e){ /* fica na fila, tenta de novo depois */ }
+      const resultado = await Promise.race([
+        db.collection('lotes').doc(item.loteId).set(item.loteData, { merge:true }).then(()=> 'ok'),
+        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 6000))
+      ]);
+      if(resultado === 'ok') removeFromLoteOutbox(item.loteId);
+      else console.warn('[Sincronização] Tempo esgotado tentando salvar lote', item.loteId);
+    } catch(e){
+      console.error('[Sincronização] Erro ao salvar lote', item.loteId, '→', e.code || e.message || e);
+    }
   }
 }
 function getDeleteOutbox(){ try{ return JSON.parse(localStorage.getItem('auditaboi_delete_outbox') || '[]'); } catch(e){ return []; } }
@@ -3168,10 +3181,15 @@ function removeFromDeleteOutbox(docId){ setDeleteOutbox(getDeleteOutbox().filter
 async function flushDeleteOutbox(){
   for(const docId of getDeleteOutbox()){
     try{
-      await raceTimeout(db.collection('animais').doc(docId).delete(), 5000, null).then(r=>{
-        if(r !== null) removeFromDeleteOutbox(docId);
-      });
-    } catch(e){ /* fica na fila, tenta de novo depois */ }
+      const resultado = await Promise.race([
+        db.collection('animais').doc(docId).delete().then(()=> 'ok'),
+        new Promise(resolve=> setTimeout(()=> resolve('timeout'), 5000))
+      ]);
+      if(resultado === 'ok') removeFromDeleteOutbox(docId);
+      else console.warn('[Sincronização] Tempo esgotado tentando excluir', docId);
+    } catch(e){
+      console.error('[Sincronização] Erro ao excluir', docId, '→', e.code || e.message || e);
+    }
   }
 }
 function excluirAnimalAtual(){
@@ -3542,6 +3560,58 @@ document.getElementById('btn-admin-export-pdf').addEventListener('click', async 
   }
   await exportPDFFrom(lista, nomeFazenda, chartsSpec);
   setLoading(false);
+});
+
+function acharGruposIdDuplicado(lista){
+  const porId = {};
+  lista.forEach(a=>{
+    if(!a.id) return;
+    const key = String(a.id).trim();
+    if(!key) return;
+    (porId[key] = porId[key] || []).push(a);
+  });
+  return Object.entries(porId).filter(([, grupo]) => grupo.length > 1);
+}
+document.getElementById('btn-admin-limpar-duplicados').addEventListener('click', async ()=>{
+  if(!adminScopeKey){ toast('Selecione uma fazenda primeiro.'); return; }
+  const grupos = acharGruposIdDuplicado(adminAllAnimals);
+  if(!grupos.length){
+    alert(`Nenhum ID duplicado encontrado nessa fazenda. Total atual: ${adminAllAnimals.length} animais.`);
+    return;
+  }
+  const totalASerApagado = grupos.reduce((acc,[,g])=> acc + (g.length-1), 0);
+  const previa = grupos.slice(0,15).map(([id,g])=>`ID ${id}: ${g.length}x`).join('\n') + (grupos.length>15 ? `\n...e mais ${grupos.length-15} ID(s).` : '');
+  const confirmar = confirm(
+    `Encontrei ${grupos.length} ID(s) duplicado(s) nessa fazenda, totalizando ${totalASerApagado} cadastro(s) a mais pra apagar:\n\n${previa}\n\n` +
+    `Pra cada ID duplicado, vou manter o cadastro mais ANTIGO e apagar os demais. Não tem como desfazer. Confirma?`
+  );
+  if(!confirmar) return;
+  setLoading(true);
+  try{
+    let apagados = 0;
+    for(const [, grupo] of grupos){
+      const ordenado = grupo.slice().sort((a,b)=>{
+        const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return ta - tb;
+      });
+      const apagar = ordenado.slice(1); // mantém o primeiro (mais antigo), apaga o resto
+      const batch = db.batch();
+      apagar.forEach(a=> batch.delete(db.collection('animais').doc(a.docId)));
+      await batch.commit();
+      apagados += apagar.length;
+    }
+    toast(`${apagados} cadastro(s) duplicado(s) apagado(s).`);
+    await loadAdminScopedAnimals();
+    setTimeout(()=>{
+      const totalAtual = adminAllAnimals.length;
+      const bateCom142 = totalAtual === 142;
+      alert(`Pronto! Apaguei ${apagados} duplicado(s).\n\nTotal atual nessa fazenda: ${totalAtual} animais.\n${bateCom142 ? '✅ Bate certinho com os 142 esperados!' : (totalAtual>142 ? `⚠ Ainda tem ${totalAtual-142} a mais do que os 142 esperados.` : `⚠ Faltam ${142-totalAtual} pra chegar nos 142 esperados.`)}`);
+    }, 600);
+  } catch(e){
+    console.error(e);
+    toast('Erro ao apagar duplicados — parte pode ter sido apagada. Tenta de novo.');
+  } finally { setLoading(false); }
 });
 
 function applyRetiroFilterAndRender(){
